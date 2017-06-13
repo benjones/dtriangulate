@@ -8,6 +8,17 @@ private:
 	FP[N] data;
   }
 
+
+
+  /*  struct AFView(FP){
+	FP[] data;
+	this(auto ref AdaptiveFloat!FP rhs, int start, int stop){
+	  data = rhs.data[start..stop];
+	}
+	}*/
+
+
+  
 public:
   static if(N == 1){
 	this(FP _fp){
@@ -61,7 +72,7 @@ public:
 
   AdaptiveFloat!(FP, M + N) opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if( op == "-"){
 	static if(M == 1 && N == 1){
-	  AdaptiveFloat!(FP, M + N) ret;
+	  AdaptiveFloat!(FP, 2) ret;
 	  ret.data[0] = data[0] - rhs.data[0];
 	  FP bVirt = data[0] - ret.data[0];
 	  FP aVirt = ret.data[0] + bVirt;
@@ -70,11 +81,11 @@ public:
 	  ret.data[1] = aRoundoff + bRoundoff;
 	  return ret;
 	} else static if(M == 1){
-	  auto ret = AdaptiveFloat!(FP, M + N)(this);
+	  auto ret = AdaptiveFloat!(FP, N + 1)(this);
 	  ret.unsafeMinusEq(rhs.data[0], 0, N);
 	  return ret;
 	} else static if(N == 1){
-	  auto ret = AdaptiveFloat!(FP, M + N)(rhs);
+	  auto ret = AdaptiveFloat!(FP, M + 1)(rhs);
 	  ret.unsafeMinusEq(data[0], 0, M);
 	  return ret;
 	} else {
@@ -102,7 +113,7 @@ public:
 	  ret.data[1] = (aSplit.data[1]*bSplit.data[1]) - err3;
 	  return ret;
 	  
-	} else static if(M == 1){
+	} else static if(M == 1){ //RHS is one float
 	  
 	  AdaptiveFloat!(FP, 2*N) ret;
 	  auto temp = AdaptiveFloat!FP(data[N - 1])*rhs; //T.N == 2
@@ -123,17 +134,31 @@ public:
 	  ret.data[0] = temp.data[0];
 	  return ret;
 	  
-	} else static if(N ==1){
+	} else static if(N ==1){ //LHS is one float, use the above
 	  return rhs*this;
 	} else {
-	  
 	  static if(M < N){
-		//2*N*1 + 2*N*(M -1) = 2*N*M
-		return this*AdaptiveFloat!FP(rhs.data[M -1]) + this*rhs.dropLast();
+		return rhs*this;
 	  } else {
-		return rhs*AdaptiveFloat!FP(data[N -1]) + rhs*this.dropLast();
+		//N <= M
+
+		AdaptiveFloat!(FP, 2*M*N) ret = rhs*AdaptiveFloat!FP(data[0]);
+
+		foreach(i; 1..N){
+		  auto partialProduct = rhs*AdaptiveFloat!FP(data[i]); //N = 2*M
+		  //writefln("partial prod, %s", partialProduct);
+		  //TODO, we probably don't need to start at j,
+		  //since it's the product of something bigger, there's probably
+		  //a proof that it won't kick in until higher up the chain
+		  foreach(j; 0..(2*M)){
+			ret.unsafePlusEq(partialProduct.data[j], j, 2*M*i);
+		  }
+		}
+		return ret;
+		
+
+
 	  }
-	  
 	}
 
 	
@@ -144,7 +169,7 @@ public:
 	import std.format;
 	string ret = "[ ";
 	foreach(d ; data){
-	  ret ~= format("%.16f", d) ~ ", ";
+	  ret ~= format("%.10f", d) ~ ", ";
 	}
 	ret ~= " ]";
 	return ret;
@@ -152,7 +177,7 @@ public:
   
 private:
 
-  this(int M)(const ref AdaptiveFloat!(FP, M) rhs) if(M <= N){
+  this(int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(M <= N){
 	foreach(i; 0..M){
 	  data[N - i - 1] = rhs.data[M - i - 1];
 	}
@@ -162,19 +187,22 @@ private:
   }
   
   void unsafePlusEq(FP f, int first, int len){
-	auto q = AdaptiveFloat!(FP, 1)(f);
+	//import std.stdio;
+	//writefln("unsafe peq, before, %f, %d, %d, %s", f, first, len, this);
+	auto q = AdaptiveFloat!FP(f);
 	foreach(i; first..(first + len)){
-	  auto t1 = AdaptiveFloat!(FP,1)(data[N - i - 1]);
+	  auto t1 = AdaptiveFloat!FP(data[N - i - 1]);
 	  auto temp = q + t1;
 	  q.data[0] = temp.data[0];
 	  data[N - i - 1] = temp.data[1];
 	}
 	data[N - first - len -1] = q.data[0];
+	//writefln("after: %s", this);
   }
 
   void unsafeMinusEq(FP f, int first, int len){
-	auto q = AdaptiveFloat!(FP, 1)(f);
-	auto t1 = AdaptiveFloat!(FP, 1)(data[N - first - 1]);
+	auto q = AdaptiveFloat!FP(f);
+	auto t1 = AdaptiveFloat!FP(data[N - first - 1]);
 	auto temp = t1 - q;
 	data[N - first - 1] = temp.data[1];
 	unsafePlusEq(temp.data[0], first + 1, len -1);
@@ -182,7 +210,7 @@ private:
 
   static if(N == 1){
 	AdaptiveFloat!(FP, 2) split() {
-	  enum splitConst = cast(FP) ( 2 << ((FP.mant_dig + 1)/2) + 1);
+	  enum FP splitConst = cast(FP) ( 2 << ((FP.mant_dig + 1)/2) + 1);
 	  FP c = splitConst*data[0];
 	  FP aBig = c - data[0];
 	  AdaptiveFloat!(FP, 2) ret;
@@ -191,15 +219,17 @@ private:
 	  return ret;
 	}
   }
-  static if(N > 1){
+  /*  static if(N > 1){
 	AdaptiveFloat!(FP, N -1) dropLast(){
+	  import std.conv;
+	  pragma(msg, "dropLast with N = " ~ to!string(N));
 	  AdaptiveFloat!(FP, N -1) ret;
 	  foreach(i ; 0..(N -1)){
 		ret.data[i] = data[i];
 	  }
 	  return ret;
 	}
-  }
+	}*/
   
 }
 
@@ -242,7 +272,7 @@ unittest{
   auto f = e - eps - eps*eps;
   assert(f.asReal() == 0.0f);
   
-
+  //writeln("computing g");
   auto g = b*b; //1 + 2*eps + eps*eps
   //writeln("g " ~ to!string(g));
   auto h = eps*eps;
