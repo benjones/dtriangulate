@@ -1,10 +1,13 @@
 module dtriangulate.predicates;
 import dtriangulate.apFloat;
 
+import std.traits : Unqual;
+
 private auto square(T)(auto ref T t){ return t*t; }
 
 auto orient2D(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
-  alias FP = typeof(a.x);
+
+  alias FP = Unqual!(typeof(a.x));
   //det of [ [ (ax - cx) (ay - cy) ] [bx - cx, by - cy]]
   FP acx = a.x - c.x;
   FP acy = a.y - c.y;
@@ -37,8 +40,8 @@ auto orient2D(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
 
   import std.math;
   //from Shewchuck, of course
-  enum FP = errorBound = (3*FP.epsilon + 16*square(FP.epsilon));
-  Real det = axby - aybx;
+  enum FP errorBound = (3*FP.epsilon + 16*square(FP.epsilon));
+  FP det = axby - aybx;
 
   if(abs(det) < errorBound*detSum){
 	return orient2DAdaptive(a, b, c);
@@ -48,8 +51,9 @@ auto orient2D(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
 }
 
 
-auto orient2DAdaptive(FP, Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
-  alias FP = typeof(a.x);
+auto orient2DAdaptive(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
+
+  alias FP = Unqual!(typeof(a.x));
   auto ax = AdaptiveFloat!FP(a.x);
   auto ay = AdaptiveFloat!FP(a.y);
   auto bx = AdaptiveFloat!FP(b.x);
@@ -68,9 +72,14 @@ auto orient2DAdaptive(FP, Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
   return (axby - aybx).asReal();
 }
 
+bool isInCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
+  return inCircle(a, b, c, d) > 0;
+}
+
 auto inCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
   import std.math;
-  alias FP = typeof(a.x);
+
+  alias FP = Unqual!(typeof(a.x));
   FP adx = a.x - d.x;
   FP ady = a.y - d.y;
   FP bdx = b.x - d.x;
@@ -111,7 +120,8 @@ auto inCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec 
 }
 
 auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
-  alias FP = typeof(a.x);
+
+  alias FP = Unqual!(typeof(a.x));
   
   auto ax = AdaptiveFloat!FP(a.x);
   auto ay = AdaptiveFloat!FP(a.y);
@@ -167,7 +177,7 @@ unittest{
   import std.stdio;
 
   int failures = 0;
-  foreach(i ; 0..1000000){
+  foreach(i ; 0..100000){
 	float x = uniform(0.0f, 1.0f);
 	float y = uniform(0.0f, 1.0f);
 
@@ -203,3 +213,4 @@ unittest{
   }
   assert(failures < 10);
 }
+
