@@ -24,7 +24,12 @@ struct Triangle{
 	v[] = [a, b, c];
   }
 
-  int opIndex(int i){
+
+  ref int opIndex(int i){
+	return v[i > 2 ? i -3 : i]; //faster than modulo?
+  }
+  
+  int opIndex(int i) const{
 	return v[i > 2 ? i -3 : i]; //faster than modulo?
   }
 	  
@@ -531,24 +536,74 @@ TriDB delaunayTriangulate(Vec)(const Vec[] points){
 
 
 void writeSVG(Vec)(string filename, const Vec[] points, const Triangle[] tris){
+  import std.array;
   import std.stdio : File;
+  import std.algorithm;
+  
+  
   File f = File(filename, "w");
 
-  Vec minP = Vec(points.map("a.x").min(), points.map("a.y").min());
-  Vec maxP = Vec(points.map("a.x").max(), points.map("a.y").max());
+  Vec minP = Vec(points.map!("a.x").minElement(), points.map!("a.y").minElement());
+  Vec maxP = Vec(points.map!("a.x").maxElement(), points.map!("a.y").maxElement());
 
-  int[] activePoints = triangles.map!(a => [a[0], a[1], a[2]])()
-	.joiner()
-	.filter!(a => a != TriDB.GHOST)()
-	.sort()
-	.uniq()
-	.array();
+  int[] activePoints = array(tris.map!(a => [a[0], a[1], a[2]])
+							 .joiner()
+							 .filter!(a => a != TriDB.GHOST));
+	
+  
+  activePoints.sort().uniq();
 
   Vec size = maxP - minP;
   minP -= .03*size;
   maxP += .03*size;
+
   size = maxP - minP;
 
+  auto radius = size.x/50.0f;
+
+  auto aspectRatio = size.y/size.x;
+  auto height = 800*aspectRatio;
+
+  f.write("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"", height,
+		  "\" viewBox=\"-0.5 ", -0.5*aspectRatio, " 1 ", aspectRatio, "\" >\n");
+
+  f.write("<g transform=\"scale(", (1.0/size.x), ", ",  (-1.0/size.y)*aspectRatio, ")\">\n",
+		  "<g transform=\"translate(" , -(minP.x + 0.5*size.x) , ", " , -(minP.y + 0.5*size.y), ")\" >\n");
+
+
+
+  foreach(const ref tri ; tris){
+	if(tri.v[0] != TriDB.GHOST && tri.v[1] != TriDB.GHOST && tri.v[2] != TriDB.GHOST){
+	  foreach(i; [0,1,2]){
+		f.write("<line x1=\"" ,  points[tri.v[i]].x, "\" y1=\"", points[tri.v[i]].y ,
+				"\" x2=\"" , points[tri.v[(i+1)%3]].x, "\" y2=\"" , points[tri.v[(i+1)%3]].y,
+				"\" stroke=\"black\" stroke-width=\"" , (0.1*radius), "\" />\n");
+	  }
+	} else {
+	  auto p1 = (tri.v[0] == TriDB.GHOST) ? tri.v[1] : tri.v[0];
+	  auto p2 = (tri.v[2] == TriDB.GHOST) ? tri.v[1] : tri.v[2];
+	  f.write("<line x1=\"", points[p1].x, "\" y1=\"", points[p1].y,
+			  "\" x2=\"", points[p2].x, "\" y2=\"", points[p2].y,
+			  "\" stroke=\"black\" stroke-width=\"", (0.3*radius), "\" stroke-dasharray=\"5%, 10%\"/>\n");
+	  
+	}
+  }
+
+  foreach(i ; activePoints){
+	const auto p = points[i];
+	f.write( "<circle cx=\"", p.x, "\" cy=\"", p.y,  "\" r=\"", radius, "\" fill=\"black\" />\n");
+	f.write( "<g transform=\"translate(", p.x, ", ", p.y, ") scale(1, -1)\" >",
+			 "<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"", radius*2, "\" fill=\"red\" >",
+			 i, "</text></g>\n");
+	  
+  }
+
+	
+	
+  f.write("</g></g>\n</svg>\n");
+
+  
+  
   
 }
 
@@ -581,6 +636,9 @@ unittest{
 	writeln(tri);
   }
 
+
+  writeSVG("test4.svg", points, tris);
+  
   
   assert(tris.length == 6);
 
