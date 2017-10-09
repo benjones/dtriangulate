@@ -38,7 +38,7 @@ auto orient2D(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
 	return -aybx;
   }
 
-  import std.math;
+  import std.math : abs;
   //from Shewchuck, of course
   enum FP errorBound = (3*FP.epsilon + 16*square(FP.epsilon));
   FP det = axby - aybx;
@@ -214,3 +214,141 @@ unittest{
   assert(failures < 10);
 }
 
+
+/*
+  closest point(p0, p1, t);  Which of p0 and p1 is closer to t?
+  
+  want to compute (p0 - t)^2 - p(1 -t)^2 and compare it to 0
+
+  expanded out:
+  p1x(p1x - 2tx) - p2x(p2x - 2tx) + p1y(p1y - 2ty) - p2y(p2y - 2ty) >? 0
+
+  shewchuck style analysis:
+  t (true)
+  t0 = p1x - 2tx -- note that 2tx is exact since multiplying by powers of 2 doesn't add error
+  t1 = p2x - 2tx
+  t2 = p1y - 2ty
+  t3 = p2y - 2ty
+  t4 = p1x*t0
+  t5 = p2x*t1
+  t6 = p1y*t2
+  t7 - p2y*t3
+  t8 = t4 - t5
+  t9 = t6 - t7
+  t10 = t8 + t9
+
+  //similary for Xs (the FP approximations)
+  x0 = p1x - 2tx, etc
+  t0 = x0 +- eps |x0| //t0 is within eps*mag of the FP approximation
+  t1 = x1 +-eps |x1| ...
+
+  t4 = p1x*to = p1x(x0 +- eps|x0|) 
+     = (p1x*x0) +- (p1x *eps |x0|)
+     = (x4 +- eps|x4|) +- (eps* (|x4| +- eps |x4|) )
+     = x4 +- eps |x4| (2 + eps)
+
+  similar for t5, 6, 7
+
+  t8 = t4 - t5 = x4 +- eps |x4| (2 + eps) - x5 +- eps |x5| (2 + eps)
+     = x8 +- eps |x8| +- eps(2+eps)(|x4| + |x5|)
+     = x8 +- eps  (  |x8| +(2+eps)(|x4| + |x5|)
+  similarly for t9
+
+  t10 = t8 + t9 = x8 +- eps  (  |x8| +(2+eps)(|x4| + |x5|) + 
+                  x9 +- eps  (  |x9| +(2+eps)(|x6| + |x7|)
+
+      = x10 +- eps |x10| +- ...
+
+ */
+
+//which of p0 or p1 is closer to t?
+int closer(Vec)(auto ref Vec p0, auto ref Vec p1, auto ref Vec t){
+
+  alias FP = Unqual!(typeof(p0.x));
+  FP tx2 = 2*t.x;
+  FP ty2 = 2*t.y;
+  FP x0 = p0.x - tx2;
+  FP x1 = p1.x - tx2;
+  FP x2 = p0.y - ty2;
+  FP x3 = p1.y - ty2;
+
+  FP x4 = p0.x*x0;
+  FP x5 = p1.x*x1;
+  FP x6 = p0.y*x2;
+  FP x7 = p1.y*x3;
+
+  FP x8 = x4 - x5;
+  FP x9 = x6 - x7;
+  FP x10 = x8 + x9;
+  import std.math : abs;
+  //check the error bounds:
+  FP minError = FP.epsilon*(abs(x10) + abs(x8) + abs(x9) +
+							(2 + FP.epsilon)*(abs(x4) + abs(x5) + abs(x6) + abs(x7)));
+  
+  if(abs(x10) > minError){
+	//less than 0 if p0 is closer
+	return x10 < 0 ? 0 : 1; 
+  } else {
+
+	return closerAdaptive(p0, p1, t);
+  }
+  
+}
+
+int closerAdaptive(Vec)(auto ref Vec p0, auto ref Vec p1, auto ref Vec t){
+
+  alias FP = Unqual!(typeof(p0.x));
+  auto tx2 = AdaptiveFloat!FP(2*t.x);
+  auto ty2 = AdaptiveFloat!FP(2*t.y);
+
+  auto p0x = AdaptiveFloat!FP(p0.x);
+  auto p0y = AdaptiveFloat!FP(p0.y);
+  auto p1x = AdaptiveFloat!FP(p1.x);
+  auto p1y = AdaptiveFloat!FP(p1.y);
+  
+  auto x0 = p0x - tx2;
+  auto x1 = p1x - tx2;
+  auto x2 = p0y - ty2;
+  auto x3 = p1y - ty2;
+
+  auto x4 = p0x*x0;
+  auto x5 = p1x*x1;
+  auto x6 = p0y*x2;
+  auto x7 = p1y*x3;
+
+  auto x8 = x4 - x5;
+  auto x9 = x6 - x7;
+  auto x10 = x8 + x9;
+
+  return x10.asReal() < 0 ? 0 : 1;
+  
+}
+
+unittest{
+  struct Vec{ float x, y; }
+
+
+  auto p0 = Vec(0,0);
+  auto p1 = Vec(float.epsilon, 0);
+  auto t = Vec(1e10, 0);
+  assert(closer(p0, p1, t) == 1);
+  assert(closer(p1, p0, t) == 0);
+
+
+  p1 = Vec(0, float.epsilon);
+  t = Vec(0, 1e10);
+  assert(closer(p0, p1, t) == 1);
+  assert(closer(p1, p0, t) == 0);
+
+
+  p1 = Vec(-float.epsilon, -float.epsilon);
+  t = Vec(-1e10, -1e10);
+  assert(closer(p0, p1, t) == 1);
+  assert(closer(p1, p0, t) == 0);
+  
+
+  import std.stdio;
+  writeln("closer tests successful");
+  
+  
+}

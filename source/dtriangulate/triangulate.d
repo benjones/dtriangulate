@@ -6,6 +6,7 @@ import dtriangulate.predicates;
 import gl3n.linalg : vec2;
 
 import std.stdio;
+import std.conv;
 
 struct Pair{ int first, second; }
 
@@ -42,25 +43,36 @@ struct Triangle{
 
 
 struct TriDB{
-
+  
   enum GHOST = -1;
+  enum DOUBLE = -2;
   this(ulong numPoints){
 	triangles = new SSOVector!(Pair, 9)[numPoints];
-	ghostEdges = new int[numPoints];
-	ghostEdges[] = GHOST;
+	ghostEdges = new Pair[numPoints];
+	ghostEdges[] = Pair(GHOST, GHOST);
   }
-
+  
   void addTriangle(Triangle t){
+	write("adding: ");
+	writeln(t);
 	foreach(i; 0..3){
 	  if(t[i] != GHOST){
 		triangles[t[i]] ~= Pair(t[i+1], t[i+2]);
 	  } else {
-		ghostEdges[t[i+1]] = t[i+2];
+		//up to 2 ghosts per vertex, add them to the first/second
+		if(ghostEdges[t[i+1]].first == GHOST){
+		  ghostEdges[t[i+1]].first = t[i+2];
+		} else {
+		  assert(ghostEdges[t[i+1]].second == GHOST);
+		  ghostEdges[t[i+1]].second = t[i+2];
+		}
 	  }
 	}
   }
-
+  
   void deleteTriangle(Triangle t){
+	write("deleting: ");
+	writeln(t);
 	foreach(i; 0..3){
 	  int u = t[i];
 	  auto vw = Pair(t[i+1], t[i+2]);
@@ -73,7 +85,12 @@ struct TriDB{
 		  }
 		}
 	  } else {
-		ghostEdges[vw.first] = GHOST;
+		//erase the first in the pair if we're lucky
+		if(ghostEdges[vw.first].first == vw.second){
+		  ghostEdges[vw.first].first = ghostEdges[vw.first].second;
+		}
+		//the second one will always be ghost now.  This may be a no-op
+		ghostEdges[vw.first].second = GHOST;
 	  }
 	}
   }
@@ -86,11 +103,22 @@ struct TriDB{
 		}
 	  }
 	} else {
-	  return ghostEdges[v];
+	  //WHAT HAPPENS IF THERE ARE 2 GHOST-V triangles?  How do we pick?
+	  //alert the caller
+	  if(ghostEdges[v].second != GHOST){
+		return DOUBLE;
+	  }
+	  return ghostEdges[v].first;
 	}
-	assert(false);
-	//return GHOST;
+	assertWithDump(false);
+	return GHOST;
   }
+
+  Pair bothAdjacents(int u, int v) const {
+	assert(u == GHOST);
+	return ghostEdges[v];
+  }
+  
   
   bool adjacentExists(int u, int v) const{
 	if(u != GHOST){
@@ -100,7 +128,7 @@ struct TriDB{
 		}
 	  }
 	} else {
-	  return ghostEdges[v] != GHOST;
+	  return ghostEdges[v].first != GHOST;
 	}
 	return false;
   }
@@ -110,10 +138,11 @@ struct TriDB{
 	  return triangles[u].length == 0 ? Pair(GHOST, GHOST) : triangles[u][0];
 	} else {
 	  foreach(int i, ge; ghostEdges){
-		if(ge != GHOST){ return Pair(i, ge); }
+		if(ge.first != GHOST){ return Pair(i, ge.first); }
 	  }
 	}
-	assert(false);
+	assertWithDump(false);
+	return Pair(GHOST, GHOST);
   }
 
   Triangle[] getTriangles() const{
@@ -142,8 +171,19 @@ struct TriDB{
 
 private:
 
+  void assertWithDump(bool cond) const {
+	if(!cond){
+	  //dump();
+	  assert(false);
+	}
+  }
+  
   SSOVector!(Pair, 9)[] triangles;
-  int[] ghostEdges;
+  //each elements of triangles[i] means there is a triangle i, pr.first, pr.second
+  Pair[] ghostEdges;
+  //if ghostEdges[i] == Ghost, no edge from ghost to i
+  //if ghostEdges[i] != ghost, triangle: ghost, i, ghostEdges[i] exists
+
 }
 
 
@@ -161,68 +201,116 @@ CCWEdge reverse(CWEdge e){
 
 void partitionPoints(Vec, bool ByX)(const Vec[] points, int[] indices){
   import std.algorithm;
+  write("partition, num points: ");
+  writeln(points.length);
+  //  writeln("indices: ");
+  //  writeln(indices);
   static if(ByX){
-	indices.topN!(delegate bool(int a, int b){return points[a].x < points[b].x; })(indices.length/2);
+	indices.topN!(delegate bool(int a, int b){
+		//		writeln(to!string(a) ~ " " ~ to!string(b) ~ " ptr: " ~ to!string(points.ptr));
+		return points[a].x < points[b].x; })(indices.length/2);
   } else {
 	indices.topN!(delegate bool(int a, int b){return points[a].y < points[b].y; })(indices.length/2);
   }
 }
 
 CWEdge hullAdvance(const ref TriDB triDB, CWEdge e){
-  return CWEdge(Pair(e.second, triDB.adjacent(TriDB.GHOST, e.second)));
+  auto adj = triDB.adjacent(TriDB.GHOST, e.second);
+  if(adj != TriDB.DOUBLE){
+	return CWEdge(Pair(e.second, adj));
+  } else {
+	auto pr = triDB.bothAdjacents(TriDB.GHOST, e.second);
+	return CWEdge(Pair(e.second, pr.first == e.first ? pr.second : pr.first));
+  }
 }
 
 CCWEdge hullAdvance(const ref TriDB triDB, CCWEdge e){
-  return CCWEdge(Pair(e.second, triDB.adjacent(e.second, TriDB.GHOST)));
+  auto adj = triDB.adjacent(e.second, TriDB.GHOST);
+  if(adj != triDB.DOUBLE){
+	return CCWEdge(Pair(e.second, adj));
+  } else {
+	auto pr = triDB.bothAdjacents(TriDB.GHOST, e.second);
+	return CCWEdge(Pair(e.second, pr.first == e.first ? pr.second : pr.first));
+  }
 }
 
 
+/*
+Hulls are convex, so if the x or y coordinates of adjacent points are equal,
+they must be extreme values (or else the second one wouldn't be on the hull)
+so getLowerHullEdge will work for either choice.
+
+HOWEVER,
+For the pathological case of collinear points, we want these edges to be
+correct for BOTH ByX AND ByY splits BC getHullLowerEdge will only chase
+in one direction.
+
+ */
+
+//want the rightmost edge.  If may edges have the same x coord
+//pick the one with the smallest y coord
+
 CWEdge hullMaxXCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge e){
-  while(points[e.second].x >= points[e.first].x){
+
+  while(points[e.second].x > points[e.first].x ||
+		(points[e.second].x == points[e.first].x && points[e.second].y < points[e.first].y)){
+	
 	e = hullAdvance(triDB, e);
   }
+  /*
   int prev = triDB.adjacent(e.first, TriDB.GHOST);
   while(points[prev].x > points[e.first].x){
 	e = CWEdge(Pair(prev, e.first));
 	prev = triDB.adjacent(e.first, TriDB.GHOST);
-  }
+	}*/
   return e;
 }
 
+//want the smallest x edge.  If there's a choice, pick the one with the topmost Y
 CCWEdge hullMinXCCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CCWEdge e){
 
-  while(points[e.second].x <= points[e.first].x){
+  while(points[e.second].x < points[e.first].x ||
+		(points[e.second].x ==  points[e.first].x && points[e.second].y > points[e.first].y)){
 	e = hullAdvance(triDB, e);
   }
+  /*
   int prev = triDB.adjacent(TriDB.GHOST, e.first);
   while(points[prev].x < points[e.first].x){
 	e = CCWEdge(Pair(prev, e.first));
 	prev = triDB.adjacent(TriDB.GHOST, e.first);
-  }
+	}*/
   return e;
 }
 
+
+//want the largest Y value.  If we get to pick, chose the smallest X
 CCWEdge hullMaxYCCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CCWEdge e){
-  while(points[e.second].y >= points[e.first].y){
+  
+  while(points[e.second].y > points[e.first].y ||
+		(points[e.second].y == points[e.first].y && points[e.second].x < points[e.first].x)){
 	e = hullAdvance(triDB, e);
   }
+  /*
   int prev = triDB.adjacent(TriDB.GHOST, e.first);
   while(points[prev].y > points[e.first].y){
 	e = CCWEdge(Pair(prev, e.first));
 	prev = triDB.adjacent(TriDB.GHOST, e.first);
-  }
+	}*/
   return e;
 }
-
+//want smallest Y.  If we get to pick, choose the biggest X
 CWEdge hullMinYCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge e){
-  while(points[e.second].y <= points[e.first].y){
+  while(points[e.second].y < points[e.first].y ||
+		(points[e.second].y == points[e.first].y && points[e.second].x > points[e.first].x)){
 	e = hullAdvance(triDB, e);
   }
+  /*
   int prev = triDB.adjacent(e.first, TriDB.GHOST);
   while(points[prev].y < points[e.first].y){
 	e = CWEdge(Pair(prev, e.first));
 	prev = triDB.adjacent(e.first, TriDB.GHOST);
   }
+  */
   return e;
 }
 
@@ -232,9 +320,13 @@ CWEdge hullMinYCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge e){
 struct EdgePair{ CWEdge cwEdge; CCWEdge ccwEdge;}
 
 
+int meshNumber = 0;
+
 EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, int[] indices){
   import std.algorithm : minElement, maxElement;
 
+  writefln("base case byX: %s with %d points", ByX, indices.length);
+  
   float yMap(int a){ return points[indices[a]].y; }
   float xMap(int a){ return points[indices[a]].x; }
   
@@ -243,7 +335,18 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 	triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.GHOST));
 	static if(ByX){
 	  //returning to vertical, so bottommost CW, topmost CCW
-	  if(points[indices[0]].y < points[indices[1]].y){
+	  if(points[indices[0]].y == points[indices[1]].y){
+		//ys are equal, CW should start at rightmost
+		if(points[indices[0]].x < points[indices[1]].y){
+		  return EdgePair(CWEdge(Pair(indices[1], indices[0])),
+						  CCWEdge(Pair(indices[0], indices[1])));
+		} else {
+		  return EdgePair(CWEdge(Pair(indices[0], indices[1])),
+						  CCWEdge(Pair(indices[1], indices[0])));
+		}
+	  
+	  } else if(points[indices[0]].y < points[indices[1]].y){
+		//the y's are different, so pick based on that
 		return EdgePair(CWEdge(Pair(indices[0], indices[1])),
 						CCWEdge(Pair(indices[1], indices[0])));
 	  } else {
@@ -252,6 +355,16 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 	  }
 	} else {
 	  //returning to horizontal, so return leftmost CCW, rightmost CW
+	  if(points[indices[0]].x == points[indices[1]].x){
+		//the x's are equal, so CW should be bottom, CCW should be top
+		if(points[indices[0]].y < points[indices[1]].y){
+		  return EdgePair(CWEdge(Pair(indices[0], indices[1])),
+						  CCWEdge(Pair(indices[1], indices[0])));
+		} else {
+		  return EdgePair(CWEdge(Pair(indices[1], indices[0])),
+						  CCWEdge(Pair(indices[0], indices[1])));
+		}
+	  }
 	  if(points[indices[0]].x < points[indices[1]].x){
 		return EdgePair(CWEdge(Pair(indices[1], indices[0])),
 						CCWEdge(Pair(indices[0], indices[1])));
@@ -321,20 +434,35 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 		
 	  }
 	} else {
-	  //colinear, but unsorted!
-	  //sort by opposite of ByX so we know what to return
+	  //colinear, but possibly unsorted!
+	  //
 	  import std.algorithm.sorting : sort;
 	  static if(ByX){
-		indices.sort!(delegate bool(int a, int b){return points[a].y < points[b].y;});
+
+		//sort by Y descending, breaking ties with x ascending
+		indices.sort!(
+					  delegate bool(int a, int b){
+						return points[a].y == points[b].y ?
+						  points[a].x < points[b].x : points[a].y > points[b].y;
+					  });
 	  } else {
-		indices.sort!(delegate bool(int a, int b){return points[b].x < points[a].x;});
+		//sort by X ascending, breaking ties by Y descending
+		indices.sort!(
+					  delegate bool(int a, int b){
+						return points[a].x == points[b].x ?
+						  points[a].y > points[b].y : points[a].x < points[b].x;
+					  });
 	  }
 	  triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.GHOST));
 	  triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.GHOST));
 	  triDB.addTriangle(Triangle(indices[1], indices[2], TriDB.GHOST));
 	  triDB.addTriangle(Triangle(indices[2], indices[1], TriDB.GHOST));
 
-	  static if(ByX){
+	  //same for both since we sorted intelligently
+	  return EdgePair(CWEdge(Pair(indices[2], indices[1])),
+					  CCWEdge(Pair(indices[0], indices[1])));
+	  
+	  /*	  static if(ByX){
 		//return to vertical, CW from bottom, CCW from top
 		return EdgePair(CWEdge(Pair(indices[0], indices[1])),
 						CCWEdge(Pair(indices[2], indices[1])));
@@ -342,14 +470,11 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 		//return to horizontal, CW from right, CCW from left
 		return EdgePair(CWEdge(Pair(indices[2], indices[1])),
 						CCWEdge(Pair(indices[0], indices[1])));
-	  }
+						}*/
 	}
 	
   }
 }
-
-
-
 
 
 
@@ -374,6 +499,7 @@ CWEdge getLowerHullEdge(Vec)(const ref TriDB triDB, const ref Vec[] points,
 }
 
 EdgePair zipHulls(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, CWEdge rToL){
+  writefln("zipping, ByX: %s, starting from %d to %d", ByX, rToL.first, rToL.second);
   SSOVector!(int, 4) leftHull;
   SSOVector!(int, 4) rightHull;
 
@@ -381,15 +507,16 @@ EdgePair zipHulls(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, CWEdge
   rightHull ~= triDB.adjacent(TriDB.GHOST, rToL.first);
 
   //add an external edge for the lower hull
-  triDB.deleteTriangle(Triangle(leftHull.back(), rToL.second, TriDB.GHOST));
-  triDB.deleteTriangle(Triangle(rToL.first, rightHull.back(), TriDB.GHOST));
+  //triDB.deleteTriangle(Triangle(leftHull.back(), rToL.second, TriDB.GHOST));
+  //triDB.deleteTriangle(Triangle(rToL.first, rightHull.back(), TriDB.GHOST));
   triDB.addTriangle(Triangle(rToL.first, rToL.second, TriDB.GHOST));
 
   CWEdge start = rToL; //save this for later
   
   //are there ghost triangles that need to be removed?
   //not to start with, since we just removed them above
-  bool leftGhost = false, rightGhost = false;
+  //scratch that, let's delete them later if necessary
+  bool leftGhost = true, rightGhost = true;
   while(true){
 
 	int lCand;
@@ -473,7 +600,9 @@ EdgePair zipHulls(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, CWEdge
 
   //add ghost for the top
   triDB.addTriangle(Triangle(rToL.second, rToL.first, TriDB.GHOST));
-
+  triDB.dump();
+  writeln("computing return edges");
+  
   CCWEdge stop = CCWEdge(Pair(rToL.first, rToL.second));
   static if(ByX){
 	//return to vertical, CW from bottom, CCW from top
@@ -492,16 +621,22 @@ EdgePair zipHulls(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, CWEdge
 EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, int[] indices){
 
   assert(indices.length > 1);
-
   if(indices.length < 4){
 	return delaunayBaseCase!(Vec,ByX)(triDB, points, indices);
   } else {
+	writeln("recurse.  Indices:");
+	writeln(indices);
+
 	partitionPoints!(Vec,ByX)(points, indices);
 
 	ulong middle = indices.length/2;
 
 	auto ep1 = delaunayRecurse!(Vec, !ByX)(triDB, points, indices[0..middle]);
+	writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB.getTriangles());
+	triDB.dump();
 	auto ep2 = delaunayRecurse!(Vec, !ByX)(triDB, points, indices[middle..$]);
+	writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB.getTriangles());
+	triDB.dump();
 
 	//because ep2 will be below, if byY, and ep2 will be to the right if byX
 	static if(ByX){
@@ -511,9 +646,13 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 	  CWEdge ldi = ep2.cwEdge;
 	  CCWEdge rdi = ep1.ccwEdge;
 	}
-	
+
+
+	writefln("getting lower hull edge, byX: %s", ByX);
+	writefln("ldi: %s,   rdi:  %s", ldi, rdi);
 	CWEdge rToL = getLowerHullEdge(triDB, points, ldi, rdi);
 
+	
 	return zipHulls!(Vec,ByX)(triDB, points, rToL);
 	
   }
@@ -540,11 +679,9 @@ void writeSVG(Vec)(string filename, const Vec[] points, const Triangle[] tris){
   import std.stdio : File;
   import std.algorithm;
   
-  
+  writefln("dumping %s", filename);
   File f = File(filename, "w");
 
-  Vec minP = Vec(points.map!("a.x").minElement(), points.map!("a.y").minElement());
-  Vec maxP = Vec(points.map!("a.x").maxElement(), points.map!("a.y").maxElement());
 
   int[] activePoints = array(tris.map!(a => [a[0], a[1], a[2]])
 							 .joiner()
@@ -552,16 +689,27 @@ void writeSVG(Vec)(string filename, const Vec[] points, const Triangle[] tris){
 	
   
   activePoints.sort().uniq();
+  if(activePoints.empty){
+	f.writeln("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"800\" ></svg>");
+	return;
+  }
+  Vec[] usedPoints = activePoints.map!(delegate Vec(int a){ return points[a]; }).array;
 
+  
+  Vec minP = Vec(usedPoints.map!("a.x").minElement(), usedPoints.map!("a.y").minElement());
+  Vec maxP = Vec(usedPoints.map!("a.x").maxElement(), usedPoints.map!("a.y").maxElement());
+
+  
   Vec size = maxP - minP;
   minP -= .03*size;
   maxP += .03*size;
 
   size = maxP - minP;
 
-  auto radius = size.x/50.0f;
+  auto radius = max(size.x, size.y)/500.0f;
 
   auto aspectRatio = size.y/size.x;
+  
   auto height = 800*aspectRatio;
 
   f.write("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"", height,
@@ -616,7 +764,6 @@ unittest{
   import std.stdio;
 
   triDB.dump();
-  
   writefln("numtris: %d",  tris.length);
   foreach(Triangle  tri ; tris){
 	writeln(tri);
@@ -642,6 +789,24 @@ unittest{
   
   assert(tris.length == 6);
 
+  
+}
+
+
+unittest{
+  //horizontal line test
+
+  foreach(np ; 2..10){
+	writefln("\n\n\nhorizontal line test: %d", np);
+	vec2[] points = new vec2[np];
+	foreach(i ; 0..points.length){
+	  points[i] = vec2(i, 0);
+	}
+
+	auto triDB = delaunayTriangulate(points);
+	writeln("HLTest finished.  TriDB Contents:");
+	triDB.dump();
+  }
   
 }
 
