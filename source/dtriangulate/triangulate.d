@@ -96,11 +96,31 @@ struct TriDB{
   }
 
   int adjacent(int u, int v) const{
+	writeln("searching adjacent: ", u, " ", v);
 	if(u != GHOST){
-	  foreach(const ref pr; triangles[u]){
-		if(pr.first == v){
-		  return pr.second;
+	  if(v != GHOST){
+		foreach(const ref pr; triangles[u]){
+		  if(pr.first == v){
+			return pr.second;
+		  }
 		}
+	  } else {
+		//v is GHOST
+		//there can be 2 triangles starting with u, ghost.  Handle that
+		int w = GHOST;
+		writeln("searching with v GHOST");
+		foreach(const ref pr; triangles[u]){
+		  writeln(pr);
+		  if(pr.first == GHOST){
+			if(w == GHOST){
+			  w = pr.second;
+			} else {
+			  return DOUBLE;
+			}
+		  }
+		}
+		assert(w != GHOST);
+		return w;
 	  }
 	} else {
 	  //WHAT HAPPENS IF THERE ARE 2 GHOST-V triangles?  How do we pick?
@@ -115,8 +135,24 @@ struct TriDB{
   }
 
   Pair bothAdjacents(int u, int v) const {
-	assert(u == GHOST);
-	return ghostEdges[v];
+	assert(u == GHOST || v == GHOST);
+	if(u == GHOST){
+	  return ghostEdges[v];
+	} else {
+	  auto ret = Pair(GHOST, GHOST);
+	  foreach(const ref pr; triangles[u]){
+		if(pr.first == GHOST){
+		  if(ret.first == GHOST){
+			ret.first = pr.second;
+		  } else {
+			ret.second = pr.second;
+			return ret;
+		  }
+		}
+	  }
+	  assert(ret.second != GHOST);
+	  return ret;
+	}
   }
   
   
@@ -177,9 +213,11 @@ private:
 	  assert(false);
 	}
   }
+
   
   SSOVector!(Pair, 9)[] triangles;
   //each elements of triangles[i] means there is a triangle i, pr.first, pr.second
+  //Note, there can be 2 triangles with ghost as the second vertex, just like below!
   Pair[] ghostEdges;
   //if ghostEdges[i] == Ghost, no edge from ghost to i
   //if ghostEdges[i] != ghost, triangle: ghost, i, ghostEdges[i] exists
@@ -203,18 +241,21 @@ void partitionPoints(Vec, bool ByX)(const Vec[] points, int[] indices){
   import std.algorithm;
   write("partition, num points: ");
   writeln(points.length);
-  //  writeln("indices: ");
-  //  writeln(indices);
   static if(ByX){
 	indices.topN!(delegate bool(int a, int b){
-		//		writeln(to!string(a) ~ " " ~ to!string(b) ~ " ptr: " ~ to!string(points.ptr));
-		return points[a].x < points[b].x; })(indices.length/2);
+		//lexicographically
+		return points[a].x == points[b].x ? points[a].y < points[b].y : points[a].x < points[b].x;
+	  })(indices.length/2);
   } else {
-	indices.topN!(delegate bool(int a, int b){return points[a].y < points[b].y; })(indices.length/2);
+	indices.topN!(delegate bool(int a, int b){
+		return points[a].y == points[b].y ? points[a].x < points[b].x : points[a].y < points[b].y;
+	  })(indices.length/2);
   }
 }
 
+//TODO these are identical except the type... make into a template
 CWEdge hullAdvance(const ref TriDB triDB, CWEdge e){
+  writeln("CWAdvance");
   auto adj = triDB.adjacent(TriDB.GHOST, e.second);
   if(adj != TriDB.DOUBLE){
 	return CWEdge(Pair(e.second, adj));
@@ -225,12 +266,36 @@ CWEdge hullAdvance(const ref TriDB triDB, CWEdge e){
 }
 
 CCWEdge hullAdvance(const ref TriDB triDB, CCWEdge e){
-  auto adj = triDB.adjacent(e.second, TriDB.GHOST);
-  if(adj != triDB.DOUBLE){
+  writeln("CCWAdvance");
+  auto adj = triDB.adjacent(TriDB.GHOST, e.second);
+  if(adj != TriDB.DOUBLE){
 	return CCWEdge(Pair(e.second, adj));
   } else {
 	auto pr = triDB.bothAdjacents(TriDB.GHOST, e.second);
 	return CCWEdge(Pair(e.second, pr.first == e.first ? pr.second : pr.first));
+  }
+}
+
+CWEdge hullReverse(const ref TriDB triDB, CWEdge e){
+  auto adj = triDB.adjacent(e.first, TriDB.GHOST);
+  if(adj != TriDB.DOUBLE){
+	return CWEdge(Pair(adj, e.first));
+  } else {
+	auto pr = triDB.bothAdjacents(e.first, TriDB.GHOST);
+	writeln("both adj: ", pr);
+	return CWEdge(Pair(pr.first == e.second ? pr.second : pr.first,
+					   e.first));
+  }
+}
+
+CCWEdge hullReverse(const ref TriDB triDB, CCWEdge e){
+  auto adj = triDB.adjacent(e.first, TriDB.GHOST);
+  if(adj != TriDB.DOUBLE){
+	return CCWEdge(Pair(adj, e.first));
+  } else {
+	auto pr = triDB.bothAdjacents(e.first, TriDB.GHOST);
+	return CCWEdge(Pair(pr.first == e.second ? pr.second : pr.first,
+					   e.first));
   }
 }
 
@@ -257,12 +322,13 @@ CWEdge hullMaxXCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge e){
 	
 	e = hullAdvance(triDB, e);
   }
-  /*
-  int prev = triDB.adjacent(e.first, TriDB.GHOST);
-  while(points[prev].x > points[e.first].x){
+  
+  int prev = hullReverse(triDB, e).first;
+  while(points[prev].x > points[e.first].x ||
+		(points[prev].x == points[e.first].x && points[prev].y < points[e.first].y)){
 	e = CWEdge(Pair(prev, e.first));
-	prev = triDB.adjacent(e.first, TriDB.GHOST);
-	}*/
+	prev = hullReverse(triDB, e).first;
+  }
   return e;
 }
 
@@ -273,12 +339,13 @@ CCWEdge hullMinXCCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CCWEdge 
 		(points[e.second].x ==  points[e.first].x && points[e.second].y > points[e.first].y)){
 	e = hullAdvance(triDB, e);
   }
-  /*
-  int prev = triDB.adjacent(TriDB.GHOST, e.first);
-  while(points[prev].x < points[e.first].x){
+  
+  int prev = hullReverse(triDB, e).first;
+  while(points[prev].x < points[e.first].x ||
+		(points[prev].x == points[e.first].x && points[prev].y > points[e.first].y)){
 	e = CCWEdge(Pair(prev, e.first));
-	prev = triDB.adjacent(TriDB.GHOST, e.first);
-	}*/
+	prev = hullReverse(triDB, e).first;
+  }
   return e;
 }
 
@@ -290,12 +357,13 @@ CCWEdge hullMaxYCCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CCWEdge 
 		(points[e.second].y == points[e.first].y && points[e.second].x < points[e.first].x)){
 	e = hullAdvance(triDB, e);
   }
-  /*
-  int prev = triDB.adjacent(TriDB.GHOST, e.first);
-  while(points[prev].y > points[e.first].y){
+  
+  int prev = hullReverse(triDB, e).first;
+  while(points[prev].y > points[e.first].y ||
+		(points[prev].y == points[e.first].y && points[prev].x < points[e.first].x)){
 	e = CCWEdge(Pair(prev, e.first));
-	prev = triDB.adjacent(TriDB.GHOST, e.first);
-	}*/
+	prev = hullReverse(triDB, e).first;
+  }
   return e;
 }
 //want smallest Y.  If we get to pick, choose the biggest X
@@ -304,13 +372,14 @@ CWEdge hullMinYCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge e){
 		(points[e.second].y == points[e.first].y && points[e.second].x > points[e.first].x)){
 	e = hullAdvance(triDB, e);
   }
-  /*
-  int prev = triDB.adjacent(e.first, TriDB.GHOST);
-  while(points[prev].y < points[e.first].y){
+  
+  int prev = hullReverse(triDB, e).first;
+  while(points[prev].y < points[e.first].y ||
+		(points[prev].y == points[e.first].y && points[prev].x > points[e.first].x)){
 	e = CWEdge(Pair(prev, e.first));
-	prev = triDB.adjacent(e.first, TriDB.GHOST);
+	prev = hullReverse(triDB, e).first;
   }
-  */
+  
   return e;
 }
 
@@ -337,7 +406,7 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 	  //returning to vertical, so bottommost CW, topmost CCW
 	  if(points[indices[0]].y == points[indices[1]].y){
 		//ys are equal, CW should start at rightmost
-		if(points[indices[0]].x < points[indices[1]].y){
+		if(points[indices[0]].x < points[indices[1]].x){
 		  return EdgePair(CWEdge(Pair(indices[1], indices[0])),
 						  CCWEdge(Pair(indices[0], indices[1])));
 		} else {
@@ -486,49 +555,69 @@ CWEdge getLowerHullEdge(Vec)(const ref TriDB triDB, const ref Vec[] points,
 							 CWEdge ldi, CCWEdge rdi){
 
   while(true){
-	if(leftOf(points[rdi.first], points[ldi.first], points[ldi.second])){
+	auto lo2d = orient2D(points[ldi.first], points[ldi.second], points[rdi.first]);
+	if(lo2d == 0){
+	  //rdi is exactly on the line from ldi.first to ldi.second:
+	  //if the next  point is closer to rdi.first, advance
+	  if(closer(points[ldi.first], points[ldi.second], points[rdi.first]) == 1){
+		ldi = hullAdvance(triDB, ldi);
+		continue; 
+	  }
+	}else if(lo2d > 0){ //rdi.first is to the left of edge ldi, advance ldi
 	  ldi = hullAdvance(triDB, ldi);
-	} else if(rightOf(points[ldi.first], points[rdi.first], points[rdi.second])){
-	  rdi = hullAdvance(triDB, rdi);
-	} else {
-	  break;
+	  continue;
 	}
+	auto ro2d = orient2D(points[rdi.first], points[rdi.second], points[ldi.first]);
+	if(ro2d == 0){
+	  if(closer(points[rdi.first], points[rdi.second], points[ldi.first]) == 1){
+		rdi = hullAdvance(triDB, rdi);
+		continue;
+	  }
+	} else if(ro2d < 0){ //ldi.first is right of edge rdi
+	  rdi = hullAdvance(triDB, rdi);
+	  continue;
+	}
+	//no more possible advancements
+	break;
 	
   }
   return CWEdge(Pair(rdi.first, ldi.first));
 }
 
-EdgePair zipHulls(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, CWEdge rToL){
-  writefln("zipping, ByX: %s, starting from %d to %d", ByX, rToL.first, rToL.second);
+EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge rToL, bool byX){
+  writefln("zipping, ByX: %s, starting from %d to %d", byX, rToL.first, rToL.second);
   SSOVector!(int, 4) leftHull;
   SSOVector!(int, 4) rightHull;
 
   leftHull ~= triDB.adjacent(rToL.second, TriDB.GHOST);
   rightHull ~= triDB.adjacent(TriDB.GHOST, rToL.first);
 
+  writefln("staring points l: %d, r: %d", leftHull.back, rightHull.back);
+  
   //add an external edge for the lower hull
   //triDB.deleteTriangle(Triangle(leftHull.back(), rToL.second, TriDB.GHOST));
   //triDB.deleteTriangle(Triangle(rToL.first, rightHull.back(), TriDB.GHOST));
-  triDB.addTriangle(Triangle(rToL.first, rToL.second, TriDB.GHOST));
+
 
   CWEdge start = rToL; //save this for later
-  
+
   //are there ghost triangles that need to be removed?
   //not to start with, since we just removed them above
   //scratch that, let's delete them later if necessary
   bool leftGhost = true, rightGhost = true;
   while(true){
-
+	writeln("while true loop.  RToL: ", rToL);
 	int lCand;
 	if(!leftHull.empty){
 	  lCand = leftHull.back;
 	  leftHull.popBack();
 	} else {
-	  lCand = triDB.adjacent(rToL.second, TriDB.GHOST);
+	  writeln("computing next lCand");
+	  lCand = hullAdvance(triDB, rToL).second;
 	  leftGhost = true;
 	}
-
-	bool lValid = rightOf(points[lCand], points[rToL.first], points[rToL.second]);
+	writeln("lcand: ", lCand);
+	bool lValid = (lCand != TriDB.GHOST) && rightOf(points[lCand], points[rToL.first], points[rToL.second]);
 
 	if(lValid){
 	  int nextCand = triDB.adjacent(rToL.second, lCand);
@@ -552,11 +641,12 @@ EdgePair zipHulls(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, CWEdge
 	  rCand = rightHull.back;
 	  rightHull.popBack();
 	} else {
-	  rCand = triDB.adjacent(TriDB.GHOST, rToL.first);
+	  writeln("computing next rCand");
+	  rCand = hullAdvance(triDB, reverse(rToL)).second;
 	  rightGhost = true;
 	}
-
-	bool rValid = rightOf(points[rCand], points[rToL.first], points[rToL.second]);
+	writeln("rcand: ", rCand);
+	bool rValid = (rCand != TriDB.GHOST) && rightOf(points[rCand], points[rToL.first], points[rToL.second]);
 
 	if(rValid){
 	  int nextCand = triDB.adjacent(rCand, rToL.first);
@@ -598,22 +688,48 @@ EdgePair zipHulls(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, CWEdge
 	}
   }
 
-  //add ghost for the top
+  //add ghost for the bottom and top
+  triDB.addTriangle(Triangle(start.first, start.second, TriDB.GHOST));  
   triDB.addTriangle(Triangle(rToL.second, rToL.first, TriDB.GHOST));
   triDB.dump();
   writeln("computing return edges");
   
   CCWEdge stop = CCWEdge(Pair(rToL.first, rToL.second));
-  static if(ByX){
+
+  if(byX){
 	//return to vertical, CW from bottom, CCW from top
 	//believe the hull calls will be no-ops, but maybe not
-	return EdgePair(hullMinYCW!Vec(triDB, points, start),
-					hullMaxYCCW!Vec(triDB, points, stop));
+
+	//it's possible when joining collinear segments for RtoL to actually point from left to right,
+	//so these are backwards...
+	//if this is ByX, then stop should be pointing left or up
+
+
+	/*	if(points[stop.first].x == points[stop.second].x &&
+	   points[stop.first].y > points[stop.second].y){
+	  //stop is pointing down
+	  //reverse start and stop bc start should be pointing the same way
+	  return EdgePair(hullMinYCW!Vec(triDB, points, reverse(stop)),
+					  hullMaxYCCW!Vec(triDB, points, reverse(start)));
+	} else {
+	*/
+	  return EdgePair(hullMinYCW!Vec(triDB, points, start),
+					  hullMaxYCCW!Vec(triDB, points, stop));
+	  //}
   } else {
 	//return to horizontal, CW from right, CCW from left
-	return EdgePair(hullMaxXCW!Vec(triDB, points, reverse(stop)),
-					hullMinXCCW!Vec(triDB, points, reverse(start)));
-	
+
+	//expect stop to be pointing up
+	//possible for stop to be pointing right... it should point left
+	/*if(points[stop.first].y == points[stop.second].y &&
+	   points[stop.first].x < points[stop.second].x){
+
+	  return EdgePair(hullMaxXCW!Vec(triDB, points, start),
+					  hullMinXCCW!Vec(triDB, points, stop));
+					  } else {*/
+	  return EdgePair(hullMaxXCW!Vec(triDB, points, reverse(stop)),
+					  hullMinXCCW!Vec(triDB, points, reverse(start)));
+	  //}
   }
 }
 
@@ -639,21 +755,51 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 	triDB.dump();
 
 	//because ep2 will be below, if byY, and ep2 will be to the right if byX
+	bool zipByX = ByX;
+	CWEdge ldi;
+	CCWEdge rdi;
+	
 	static if(ByX){
-	  CWEdge ldi = ep1.cwEdge;
-	  CCWEdge rdi = ep2.ccwEdge;
+	  if(points[ep1.ccwEdge.first].x == points[ep2.cwEdge.first].x){
+		zipByX = false;
+		writefln("swapped zipByX to %s", zipByX);
+		ldi = ep2.cwEdge;
+		rdi = ep1.ccwEdge;
+		//all the points must be collinear!  Merge by Y!
+	  } else {
+		ldi = ep1.cwEdge;
+		rdi = ep2.ccwEdge;
+	  }
 	} else {
-	  CWEdge ldi = ep2.cwEdge;
-	  CCWEdge rdi = ep1.ccwEdge;
+	  if(points[ep1.ccwEdge.first].y == points[ep2.cwEdge.first].y){
+		//collinear, merge by X
+		zipByX = true;
+		writefln("swapped zipByX to %s", zipByX);
+		ldi = ep1.cwEdge;
+		rdi = ep2.ccwEdge;
+	  } else {
+		ldi = ep2.cwEdge;
+		rdi = ep1.ccwEdge;
+	  }
 	}
 
 
-	writefln("getting lower hull edge, byX: %s", ByX);
+	writefln("getting lower hull edge, byX: %s", zipByX);
+	writefln("ep1: %s", ep1);
+	writefln("ep2: %s", ep2);
 	writefln("ldi: %s,   rdi:  %s", ldi, rdi);
 	CWEdge rToL = getLowerHullEdge(triDB, points, ldi, rdi);
 
 	
-	return zipHulls!(Vec,ByX)(triDB, points, rToL);
+	auto retEdgePair = zipHulls!(Vec)(triDB, points, rToL, zipByX);
+	//since we are either correct or collinear, we should be good.
+	//zip should make sure that things work correctly for the collinear case
+	//	if(ByX == zipByX){
+	  return retEdgePair;
+	  //	} else {
+	  //if ByX , then we want to give back the 
+	  
+	  //	}
 	
   }
 }
@@ -706,7 +852,7 @@ void writeSVG(Vec)(string filename, const Vec[] points, const Triangle[] tris){
 
   size = maxP - minP;
 
-  auto radius = max(size.x, size.y)/500.0f;
+  auto radius = max(size.x, size.y)/100.0f;
 
   auto aspectRatio = size.y/size.x;
   
@@ -757,6 +903,8 @@ void writeSVG(Vec)(string filename, const Vec[] points, const Triangle[] tris){
 
 unittest{
 
+  writeln("\n\n\n2 points test");
+  
   vec2[] points = [ vec2(0,0), vec2(1,1) ];
   auto triDB = delaunayTriangulate(points);
   auto tris = triDB.getTriangles();
@@ -774,6 +922,7 @@ unittest{
 
 unittest{
 
+  writeln("\n\n\n\n4 points test");
   vec2[] points  = [vec2(0,0), vec2(1,1), vec2(0.2, 0.9), vec2(0.9, 1)];
   auto triDB = delaunayTriangulate(points);
   auto tris = triDB.getTriangles();
@@ -794,9 +943,9 @@ unittest{
 
 
 unittest{
-  //horizontal line test
+  //horizontal/vertical line test
 
-  foreach(np ; 2..10){
+  foreach(np ; 2..20){
 	writefln("\n\n\nhorizontal line test: %d", np);
 	vec2[] points = new vec2[np];
 	foreach(i ; 0..points.length){
@@ -807,6 +956,36 @@ unittest{
 	writeln("HLTest finished.  TriDB Contents:");
 	triDB.dump();
   }
+
+  foreach(np ; 2..20){
+	writefln("\n\n\nvertical line test: %d", np);
+	vec2[] points = new vec2[np];
+	foreach(i ; 0..points.length){
+	  points[i] = vec2(0, i);
+	}
+
+	auto triDB = delaunayTriangulate(points);
+	writeln("VLTest finished.  TriDB Contents:");
+	triDB.dump();
+  }
+
+
+  //combined horizontal/vertical:
+
+  foreach(np ; 2..5){
+	writefln("\n\n\npathalogical lines test: %d", np);
+	vec2[] points;
+	foreach(i ; 1..np){
+	  points  ~= vec2(0, i);
+	  points  ~= vec2(i, 0);
+	}
+	writeln(points);
+	auto triDB = delaunayTriangulate(points);
+	writeln("HLTest finished.  TriDB Contents:");
+	triDB.dump();
+	writeSVG(to!string("pathalogical" ~ to!string(np) ~ ".svg"), points, triDB.getTriangles());
+  }
+
   
 }
 
