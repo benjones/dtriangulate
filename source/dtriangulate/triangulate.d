@@ -8,7 +8,11 @@ import gl3n.linalg : vec2;
 import std.stdio;
 import std.conv;
 
-struct Pair{ int first, second; }
+struct Pair{ int first, second;
+  bool opEquals(Pair rhs) const{
+	return first == rhs.first && second == rhs.second;
+  }
+}
 
 bool leftOf(Vec)(Vec p, Vec e1, Vec e2){
   return orient2D(e1, e2, p) > 0;
@@ -34,8 +38,20 @@ struct Triangle{
 	return v[i > 2 ? i -3 : i]; //faster than modulo?
   }
 	  
-  bool opEquals(Triangle rhs){
+  bool opEquals(Triangle rhs) const{
 	return v[0] == rhs.v[0] && v[1] == rhs.v[1] && v[2] == rhs.v[2];
+  }
+
+  string toString() const{
+	string ret =  "Triangle( ";
+	foreach(i ; v){
+	  if(TriDB.isGhost(i)){
+		ret ~= "GHOST " ~ to!string(TriDB.unGhost(i)) ~ ", ";
+	  } else {
+		ret ~= to!string(i) ~ ", ";
+	  }
+	}
+	return to!string(ret ~ " )");
   }
   
   private int[3] v;
@@ -43,149 +59,155 @@ struct Triangle{
 
 
 struct TriDB{
-  
-  enum GHOST = -1;
-  enum DOUBLE = -2;
+
   this(ulong numPoints){
 	triangles = new SSOVector!(Pair, 9)[numPoints];
-	ghostEdges = new Pair[numPoints];
-	ghostEdges[] = Pair(GHOST, GHOST);
   }
+
+  //ghosts will have their MSB set to 1
   
-  void addTriangle(Triangle t){
-	write("adding: ");
-	writeln(t);
+  public static bool isGhost(int i){
+	return i < 0; //is MSB set?
+  }
+
+  public static int unGhost(int i){
+	assert(isGhost(i));
+	enum int mask = 1 << (8*int.sizeof -1);
+	return i ^ mask;
+  }
+
+  public static int makeGhost(int i){
+	assert(i >= 0);
+	enum int mask = 1 << (8*int.sizeof -1);
+	return i | mask;
+  }
+
+
+  
+  void addTriangle(Vec)(Triangle t, const ref Vec[] points){
+	//writeln("adding: ", t);
+	if(!isGhost(t[0]) && !isGhost(t[1]) && !isGhost(t[2])){
+	  assert(orient2D(points[t[0]], points[t[1]], points[t[2]]) > 0);
+	}
 	foreach(i; 0..3){
-	  if(t[i] != GHOST){
+	  if(!isGhost(t[i])){ //don't add ghost edges
 		triangles[t[i]] ~= Pair(t[i+1], t[i+2]);
-	  } else {
-		//up to 2 ghosts per vertex, add them to the first/second
-		if(ghostEdges[t[i+1]].first == GHOST){
-		  ghostEdges[t[i+1]].first = t[i+2];
-		} else {
-		  assert(ghostEdges[t[i+1]].second == GHOST);
-		  ghostEdges[t[i+1]].second = t[i+2];
-		}
 	  }
 	}
   }
   
   void deleteTriangle(Triangle t){
-	write("deleting: ");
-	writeln(t);
+	//writeln("deleting: ", t);
+	int deletedCount = 0;
+	int realCount = 0;
 	foreach(i; 0..3){
 	  int u = t[i];
-	  auto vw = Pair(t[i+1], t[i+2]);
-	  if(u != GHOST){
-		foreach(ref pr ; triangles[u]){
+	  if(!isGhost(u)){
+		++realCount;
+		auto vw = Pair(t[i+1], t[i+2]);
+		foreach(j, pr ; triangles[u]){
 		  if(pr == vw){
-			pr = triangles[u][$-1];
+			triangles[u][j] = triangles[u][$-1];
 			triangles[u].popBack();
+			++deletedCount;
 			break;
 		  }
 		}
-	  } else {
-		//erase the first in the pair if we're lucky
-		if(ghostEdges[vw.first].first == vw.second){
-		  ghostEdges[vw.first].first = ghostEdges[vw.first].second;
-		}
-		//the second one will always be ghost now.  This may be a no-op
-		ghostEdges[vw.first].second = GHOST;
-	  }
+	  } 
 	}
+	assert(realCount == deletedCount);
   }
 
-  int adjacent(int u, int v) const{
-	writeln("searching adjacent: ", u, " ", v);
-	if(u != GHOST){
-	  if(v != GHOST){
-		foreach(const ref pr; triangles[u]){
-		  if(pr.first == v){
-			return pr.second;
-		  }
-		}
-	  } else {
-		//v is GHOST
-		//there can be 2 triangles starting with u, ghost.  Handle that
-		int w = GHOST;
-		writeln("searching with v GHOST");
-		foreach(const ref pr; triangles[u]){
-		  writeln(pr);
-		  if(pr.first == GHOST){
-			if(w == GHOST){
-			  w = pr.second;
-			} else {
-			  return DOUBLE;
-			}
-		  }
-		}
-		assert(w != GHOST);
-		return w;
+
+  //need to distinguish real neighbors from ghosts!
+  /*  int adjacent(int u, int v) const{
+	write("searching adjacent: ");
+	if(isGhost(u)){ write("Ghost: ", unGhost(u), ", "); }
+	else {write(u, ", ");}
+	if(isGhost(v)){ writeln("Ghost: ", unGhost(v), ", "); }
+	else {writeln(v, ", ");}
+	  
+	assert(!isGhost(u));
+	assert(u != v);
+	foreach(const ref pr; triangles[u]){
+	  if(pr.first == v){
+		return pr.second;
 	  }
-	} else {
-	  //WHAT HAPPENS IF THERE ARE 2 GHOST-V triangles?  How do we pick?
-	  //alert the caller
-	  if(ghostEdges[v].second != GHOST){
-		return DOUBLE;
-	  }
-	  return ghostEdges[v].first;
 	}
-	assertWithDump(false);
-	return GHOST;
+	assert(false);
+	//return -1;
+	}*/
+
+
+  int adjacentGhost(int u, int v) const{
+	assert(!isGhost(u));
+	assert(u != v);
+	foreach(const ref pr; triangles[u]){
+	  if(pr.first ==v && isGhost(pr.second)){
+		return pr.second;
+	  }
+	}
+	assert(false);
+	
+  }
+  int adjacentReal(int u, int v) const{
+	assert(!isGhost(u));
+	assert(u != v);
+	foreach(const ref pr; triangles[u]){
+	  if(pr.first ==v && !isGhost(pr.second)){
+		return pr.second;
+	  }
+	}
+	assert(false);
+	
   }
 
-  Pair bothAdjacents(int u, int v) const {
-	assert(u == GHOST || v == GHOST);
-	if(u == GHOST){
-	  return ghostEdges[v];
-	} else {
-	  auto ret = Pair(GHOST, GHOST);
-	  foreach(const ref pr; triangles[u]){
-		if(pr.first == GHOST){
-		  if(ret.first == GHOST){
-			ret.first = pr.second;
-		  } else {
-			ret.second = pr.second;
-			return ret;
-		  }
+  //return the real adjacent vertex if it exists
+  int adjacentRealIfExists(int u, int v) const{
+	assert(!isGhost(u));
+	assert(u != v);
+	int ret;
+	bool found;
+	foreach(const ref pr; triangles[u]){
+	  if(pr.first ==v){
+		if(!isGhost(pr.second)){
+		  return pr.second;
+		} else {
+		  ret = pr.second;
+		  found = true;
 		}
 	  }
-	  assert(ret.second != GHOST);
-	  return ret;
 	}
+	assert(found);
+	return ret;
   }
   
-  
+
   bool adjacentExists(int u, int v) const{
-	if(u != GHOST){
-	  foreach(const ref pr ; triangles[u]){
-		if(pr.first == v){
-		  return true;
-		}
+	assert(!isGhost(u));
+	foreach(const ref pr ; triangles[u]){
+	  if(pr.first == v){
+		return true;
 	  }
-	} else {
-	  return ghostEdges[v].first != GHOST;
 	}
 	return false;
   }
 
-  Pair adjacentTriangle(int u) const{
-	if(u != GHOST){
-	  return triangles[u].length == 0 ? Pair(GHOST, GHOST) : triangles[u][0];
-	} else {
-	  foreach(int i, ge; ghostEdges){
-		if(ge.first != GHOST){ return Pair(i, ge.first); }
-	  }
-	}
-	assertWithDump(false);
-	return Pair(GHOST, GHOST);
-  }
+  /*  Pair adjacentTriangle(int u) const{
+	assert(!isGhost(u));
+	return triangles[u].length == 0 ? Pair(-1, -1) : triangles[u][0];
 
+	}*/
+
+  Pair[] getTriangles(int i) const{
+	return triangles[i].dup();
+  }
+  
   Triangle[] getTriangles() const{
 	Triangle[] ret;
 	foreach(int i, const ref svec; triangles){
 	  foreach(const ref pr; svec){
-		if((pr.first == GHOST || i < pr.first) && (pr.second == GHOST || i < pr.second)){
+		if((isGhost(pr.first) || i < pr.first) && (isGhost(pr.second) || i < pr.second)){
 		  ret ~= Triangle(i, pr.first, pr.second);
 		}
 	  }
@@ -193,34 +215,53 @@ struct TriDB{
 	return ret;
   }
 
+  int[] getActiveVertices() const{
+	int[] ret;
+	foreach(int i, const ref svec; triangles){
+	  if(!svec.empty){
+		ret ~= i;
+	  }
+	}
+	return ret;
+  }
 
   void dump() const {
 	import std.stdio;
 	writeln("normal entries");
-	foreach(set ; triangles){
-	  writeln(set);
+	foreach(i, const ref set ; triangles){
+	  if(!set.empty){
+		write(i, ": ");
+		foreach(pr ; set){
+		  write("( ");
+		  if(isGhost(pr.first)){
+			write("Ghost ", unGhost(pr.first));
+		  } else {
+			write(pr.first);
+		  }
+		  write(", ");
+		  if(isGhost(pr.second)){
+			write("Ghost ", unGhost(pr.second));
+		  } else {
+			write(pr.second);
+		  }
+		  
+		  write(" ) ");
+		}
+		writeln();
+	  }
 	}
-	writeln("ghost edges");
-	writeln(ghostEdges);
 	
   }
 
 private:
 
-  void assertWithDump(bool cond) const {
-	if(!cond){
-	  //dump();
-	  assert(false);
-	}
-  }
-
-  
   SSOVector!(Pair, 9)[] triangles;
   //each elements of triangles[i] means there is a triangle i, pr.first, pr.second
-  //Note, there can be 2 triangles with ghost as the second vertex, just like below!
-  Pair[] ghostEdges;
-  //if ghostEdges[i] == Ghost, no edge from ghost to i
-  //if ghostEdges[i] != ghost, triangle: ghost, i, ghostEdges[i] exists
+  //if one of the elements in the pair, it means it is a GHOST edge
+  //which and the negative value is the next vertex in a CCW ordering
+  //for example if triangle[i] has j, -k, then i, j, k are consecutive edges
+  //in a CCW ordering
+
 
 }
 
@@ -240,7 +281,7 @@ CCWEdge reverse(CWEdge e){
 void partitionPoints(Vec, bool ByX)(const Vec[] points, int[] indices){
   import std.algorithm;
   write("partition, num points: ");
-  writeln(points.length);
+  writeln(indices.length);
   static if(ByX){
 	indices.topN!(delegate bool(int a, int b){
 		//lexicographically
@@ -253,50 +294,45 @@ void partitionPoints(Vec, bool ByX)(const Vec[] points, int[] indices){
   }
 }
 
-//TODO these are identical except the type... make into a template
+
+
 CWEdge hullAdvance(const ref TriDB triDB, CWEdge e){
-  writeln("CWAdvance");
-  auto adj = triDB.adjacent(TriDB.GHOST, e.second);
-  if(adj != TriDB.DOUBLE){
-	return CWEdge(Pair(e.second, adj));
-  } else {
-	auto pr = triDB.bothAdjacents(TriDB.GHOST, e.second);
-	return CWEdge(Pair(e.second, pr.first == e.first ? pr.second : pr.first));
-  }
+  return CWEdge(Pair(e.second,
+					 triDB.adjacentReal(e.second, TriDB.makeGhost(e.first))));
 }
 
 CCWEdge hullAdvance(const ref TriDB triDB, CCWEdge e){
-  writeln("CCWAdvance");
-  auto adj = triDB.adjacent(TriDB.GHOST, e.second);
-  if(adj != TriDB.DOUBLE){
-	return CCWEdge(Pair(e.second, adj));
-  } else {
-	auto pr = triDB.bothAdjacents(TriDB.GHOST, e.second);
-	return CCWEdge(Pair(e.second, pr.first == e.first ? pr.second : pr.first));
-  }
+  return CCWEdge(Pair(e.second,
+					  TriDB.unGhost(triDB.adjacentGhost(e.first, e.second))));
 }
 
 CWEdge hullReverse(const ref TriDB triDB, CWEdge e){
-  auto adj = triDB.adjacent(e.first, TriDB.GHOST);
-  if(adj != TriDB.DOUBLE){
-	return CWEdge(Pair(adj, e.first));
-  } else {
-	auto pr = triDB.bothAdjacents(e.first, TriDB.GHOST);
-	writeln("both adj: ", pr);
-	return CWEdge(Pair(pr.first == e.second ? pr.second : pr.first,
-					   e.first));
-  }
+  return CWEdge(Pair(TriDB.unGhost(triDB.adjacentGhost(e.second, e.first)),
+					 e.first));
 }
 
-CCWEdge hullReverse(const ref TriDB triDB, CCWEdge e){
-  auto adj = triDB.adjacent(e.first, TriDB.GHOST);
-  if(adj != TriDB.DOUBLE){
-	return CCWEdge(Pair(adj, e.first));
-  } else {
-	auto pr = triDB.bothAdjacents(e.first, TriDB.GHOST);
-	return CCWEdge(Pair(pr.first == e.second ? pr.second : pr.first,
-					   e.first));
+ CCWEdge hullReverse(const ref TriDB triDB, CCWEdge e){
+   return CCWEdge(Pair( triDB.adjacentReal(e.first, TriDB.makeGhost(e.second)),
+						e.first));
+}
+
+
+void hullCheck(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge start){
+  writeln("hull check");
+  CWEdge e = hullAdvance(triDB, start);
+  int cMax = 100000;
+  int count = 0;
+  while(count < cMax && e != start){
+	CWEdge next = hullAdvance(triDB, e);
+	assert(!leftOf(points[e.first], points[e.second], points[next.second]));
+	e = next;
+	++count;
   }
+  if(count == cMax){
+	writeln("didn't make it back to start");
+	assert(false);
+  }
+  
 }
 
 
@@ -389,19 +425,54 @@ CWEdge hullMinYCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge e){
 struct EdgePair{ CWEdge cwEdge; CCWEdge ccwEdge;}
 
 
+//replace CCW edges ab, and bc with triangle a, c, b, fixing all necessary ghost edges
+void makeTriFromTwoEdges(Vec)(ref TriDB triDB, int a, int b, int c, const ref Vec[] points){
+  auto prev = hullReverse(triDB, CCWEdge(Pair(a, b))).first;
+  auto next = hullAdvance(triDB, CCWEdge(Pair(b, c))).second;
+  //delete the 3 ghost triangles that are now bad
+  triDB.deleteTriangle(Triangle(prev, a, TriDB.makeGhost(b)));
+  triDB.deleteTriangle(Triangle(a, b, TriDB.makeGhost(c)));
+  triDB.deleteTriangle(Triangle(b, c, TriDB.makeGhost(next)));
+  //and add the appropriate new triangles:
+  triDB.addTriangle(Triangle(a, c, b), points);
+  triDB.addTriangle(Triangle(prev, a, TriDB.makeGhost(c)), points);
+  triDB.addTriangle(Triangle(a, c, TriDB.makeGhost(next)), points);
+  
+}
+
+void eraseEdge(Vec)(ref TriDB triDB, CCWEdge e, const ref Vec[] points){
+  //delete the two edges:
+  auto prev = hullReverse(triDB, e).first;
+  auto next = hullAdvance(triDB, e).second;
+  //the real value MUST exist if we're calling this function
+  auto newPoint = triDB.adjacentReal(e.first, e.second);
+  triDB.deleteTriangle(Triangle(prev, e.first, TriDB.makeGhost(e.second)));
+  triDB.deleteTriangle(Triangle(e.first, e.second, TriDB.makeGhost(next)));
+  triDB.deleteTriangle(Triangle(e.first, e.second, newPoint));
+  //and add the 3 new ones
+  triDB.addTriangle(Triangle(prev, e.first, TriDB.makeGhost(newPoint)), points);
+  triDB.addTriangle(Triangle(e.first, newPoint,  TriDB.makeGhost(e.second)), points);
+  triDB.addTriangle(Triangle(newPoint, e.second, TriDB.makeGhost(next)), points);
+}
+
+
+
 int meshNumber = 0;
 
 EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, int[] indices){
   import std.algorithm : minElement, maxElement;
 
-  writefln("base case byX: %s with %d points", ByX, indices.length);
+  //    writefln("base case byX: %s with %d points", ByX, indices.length);
+
+  //  foreach(ind; indices){
+  //	writefln("%d: %.8f, %.8f", ind, points[ind].x, points[ind].y);
+  //  }
   
-  float yMap(int a){ return points[indices[a]].y; }
-  float xMap(int a){ return points[indices[a]].x; }
-  
+  auto yMap(int a){ return Tuple!(float, float)(points[indices[a]].y, points[indices[a]].x); }
+  auto xMap(int a){ return Tuple!(float, float)(points[indices[a]].x, points[indices[a]].y);}
   if(indices.length == 2){
-	triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.GHOST));
-	triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.GHOST));
+	triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.makeGhost(indices[0])), points);
+	triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.makeGhost(indices[1])), points);
 	static if(ByX){
 	  //returning to vertical, so bottommost CW, topmost CCW
 	  if(points[indices[0]].y == points[indices[1]].y){
@@ -449,16 +520,18 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 	auto o2d = orient2D(points[indices[0]], points[indices[1]], points[indices[2]]);
 
 	if(o2d > 0){
+	  //	  writeln("oriented correctly");
 	  //positively oriented, add the triangle as is
-	  triDB.addTriangle(Triangle(indices[0], indices[1], indices[2]));
+	  triDB.addTriangle(Triangle(indices[0], indices[1], indices[2]), points);
 	  //and the appropriate ghosts
-	  triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.GHOST));
-	  triDB.addTriangle(Triangle(indices[2], indices[1], TriDB.GHOST));
-	  triDB.addTriangle(Triangle(indices[0], indices[2], TriDB.GHOST));
+	  triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.makeGhost(indices[2])), points);
+	  triDB.addTriangle(Triangle(indices[1], indices[2], TriDB.makeGhost(indices[0])), points);
+	  triDB.addTriangle(Triangle(indices[2], indices[0], TriDB.makeGhost(indices[1])), points);
 
 	  static if(ByX){
 		//returning to vertical
-
+		
+		
 		int minIndex = [0,1,2].minElement!yMap;
 		int maxIndex = [0,1,2].maxElement!yMap;
 		
@@ -480,11 +553,12 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 	  }
 	  
 	} else if(o2d < 0){
+	  //	  writeln("oriented incorrectly");
 	  //negatively oriented, swap 1 and 2
-	  triDB.addTriangle(Triangle(indices[0], indices[2], indices[1]));
-	  triDB.addTriangle(Triangle(indices[2], indices[0], TriDB.GHOST));
-	  triDB.addTriangle(Triangle(indices[1], indices[2], triDB.GHOST));
-	  triDB.addTriangle(Triangle(indices[0], indices[1], triDB.GHOST));
+	  triDB.addTriangle(Triangle(indices[0], indices[2], indices[1]), points);
+	  triDB.addTriangle(Triangle(indices[0], indices[2], TriDB.makeGhost(indices[1])), points);
+	  triDB.addTriangle(Triangle(indices[2], indices[1], triDB.makeGhost(indices[0])), points);
+	  triDB.addTriangle(Triangle(indices[1], indices[0], triDB.makeGhost(indices[2])), points);
 
 	  static if(ByX){
 		//returning to vertical
@@ -505,6 +579,7 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 	} else {
 	  //colinear, but possibly unsorted!
 	  //
+	  //	  writeln("collinear!");
 	  import std.algorithm.sorting : sort;
 	  static if(ByX){
 
@@ -522,24 +597,15 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 						  points[a].y > points[b].y : points[a].x < points[b].x;
 					  });
 	  }
-	  triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.GHOST));
-	  triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.GHOST));
-	  triDB.addTriangle(Triangle(indices[1], indices[2], TriDB.GHOST));
-	  triDB.addTriangle(Triangle(indices[2], indices[1], TriDB.GHOST));
+	  triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.makeGhost(indices[2])), points);
+	  triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.makeGhost(indices[1])), points);
+	  triDB.addTriangle(Triangle(indices[1], indices[2], TriDB.makeGhost(indices[1])), points);
+	  triDB.addTriangle(Triangle(indices[2], indices[1], TriDB.makeGhost(indices[0])), points);
 
 	  //same for both since we sorted intelligently
 	  return EdgePair(CWEdge(Pair(indices[2], indices[1])),
 					  CCWEdge(Pair(indices[0], indices[1])));
 	  
-	  /*	  static if(ByX){
-		//return to vertical, CW from bottom, CCW from top
-		return EdgePair(CWEdge(Pair(indices[0], indices[1])),
-						CCWEdge(Pair(indices[2], indices[1])));
-	  } else {
-		//return to horizontal, CW from right, CCW from left
-		return EdgePair(CWEdge(Pair(indices[2], indices[1])),
-						CCWEdge(Pair(indices[0], indices[1])));
-						}*/
 	}
 	
   }
@@ -551,185 +617,141 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 //rdi, inner ccw pointing edge from right half
 //connecting the two hulls will be CW, either right to left for horizontal,
 //or bottom to top for vertical
-CWEdge getLowerHullEdge(Vec)(const ref TriDB triDB, const ref Vec[] points,
-							 CWEdge ldi, CCWEdge rdi){
+void advanceToLowerHullEdge(Vec)(const ref TriDB triDB, const ref Vec[] points,
+							 ref CWEdge ldi, ref CCWEdge rdi){
 
   while(true){
 	auto lo2d = orient2D(points[ldi.first], points[ldi.second], points[rdi.first]);
-	if(lo2d == 0){
-	  //rdi is exactly on the line from ldi.first to ldi.second:
-	  //if the next  point is closer to rdi.first, advance
-	  if(closer(points[ldi.first], points[ldi.second], points[rdi.first]) == 1){
-		ldi = hullAdvance(triDB, ldi);
-		continue; 
-	  }
-	}else if(lo2d > 0){ //rdi.first is to the left of edge ldi, advance ldi
+	if(lo2d > 0){ //rdi.first is to the left of edge ldi, advance ldi
 	  ldi = hullAdvance(triDB, ldi);
 	  continue;
 	}
+
 	auto ro2d = orient2D(points[rdi.first], points[rdi.second], points[ldi.first]);
-	if(ro2d == 0){
-	  if(closer(points[rdi.first], points[rdi.second], points[ldi.first]) == 1){
-		rdi = hullAdvance(triDB, rdi);
-		continue;
-	  }
-	} else if(ro2d < 0){ //ldi.first is right of edge rdi
+	if(ro2d < 0){ //ldi.first is right of edge rdi
 	  rdi = hullAdvance(triDB, rdi);
 	  continue;
 	}
+	
 	//no more possible advancements
 	break;
-	
   }
-  return CWEdge(Pair(rdi.first, ldi.first));
 }
-
-EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge rToL, bool byX){
-  writefln("zipping, ByX: %s, starting from %d to %d", byX, rToL.first, rToL.second);
-  SSOVector!(int, 4) leftHull;
-  SSOVector!(int, 4) rightHull;
-
-  leftHull ~= triDB.adjacent(rToL.second, TriDB.GHOST);
-  rightHull ~= triDB.adjacent(TriDB.GHOST, rToL.first);
-
-  writefln("staring points l: %d, r: %d", leftHull.back, rightHull.back);
+ 
+EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWEdge rdi, bool byX){
   
-  //add an external edge for the lower hull
-  //triDB.deleteTriangle(Triangle(leftHull.back(), rToL.second, TriDB.GHOST));
-  //triDB.deleteTriangle(Triangle(rToL.first, rightHull.back(), TriDB.GHOST));
+  //  writefln("zipping, ByX: %s, ldi: %s, rdi: %s", byX, ldi, rdi);
+  advanceToLowerHullEdge(triDB, points, ldi, rdi);
+  
+  CCWEdge rToL = CCWEdge(Pair(rdi.first, ldi.first)); //CCW when viewed from the top
+  //it's CW if we're on the bottom
+  CWEdge start = CWEdge(Pair(rToL.first, rToL.second)); //save this for later
+  
+  //  writeln("updated ldi: ", ldi, " rdi: " , rdi);
+  // writefln("rtol to start: %d, %d", rToL.first, rToL.second);
 
+  auto preRdi = hullReverse(triDB, rdi).first;
+  //  writeln("preRdi: ", preRdi);
+  //update the ghost triangle above rdi
+  triDB.deleteTriangle(Triangle(preRdi, rdi.first, TriDB.makeGhost(rdi.second)));
+  triDB.addTriangle(Triangle(preRdi, rToL.first, TriDB.makeGhost(rToL.second)), points);
 
-  CWEdge start = rToL; //save this for later
+  //update the ghost triangle on the ldi side
+  auto preLdi = hullReverse(triDB, ldi).first;
+  //  writeln("preLdi: ", preLdi);
+  triDB.deleteTriangle(Triangle(ldi.second, ldi.first, TriDB.makeGhost(preLdi)));
+  triDB.addTriangle(Triangle(ldi.second, rToL.second, TriDB.makeGhost(rToL.first)), points);
 
+  //go from l to r to rdi.second for the closing edge of the hull
+  triDB.addTriangle(Triangle(rToL.second, rToL.first, TriDB.makeGhost(rdi.second)), points);
+  //and from r to l on top
+  triDB.addTriangle(Triangle(rToL.first, rToL.second, TriDB.makeGhost(preLdi)), points);
+
+  
   //are there ghost triangles that need to be removed?
-  //not to start with, since we just removed them above
-  //scratch that, let's delete them later if necessary
-  bool leftGhost = true, rightGhost = true;
+  //yes, to start with
   while(true){
-	writeln("while true loop.  RToL: ", rToL);
-	int lCand;
-	if(!leftHull.empty){
-	  lCand = leftHull.back;
-	  leftHull.popBack();
-	} else {
-	  writeln("computing next lCand");
-	  lCand = hullAdvance(triDB, rToL).second;
-	  leftGhost = true;
-	}
-	writeln("lcand: ", lCand);
-	bool lValid = (lCand != TriDB.GHOST) && rightOf(points[lCand], points[rToL.first], points[rToL.second]);
+	//	writeln("while true loop.  RToL: ", rToL);
+	//	writeln("computing next lCand");
+	auto lCand = hullAdvance(triDB, rToL).second;
+
+	//	writeln("lcand: ", lCand);
+	bool lValid = rightOf(points[lCand], points[rToL.first], points[rToL.second]);
 
 	if(lValid){
-	  int nextCand = triDB.adjacent(rToL.second, lCand);
-	  while(nextCand != TriDB.GHOST &&
+	  int nextCand = triDB.adjacentRealIfExists(rToL.second, lCand);
+	  //	  writeln("left nextCand, ", nextCand);
+	  while(!TriDB.isGhost(nextCand) &&
 			isInCircle(points[rToL.second], points[rToL.first], points[lCand], points[nextCand])){
-		//nextCand would be hosed by triangle rtoL.second, rToL.first, lCand, so delete edge
-		leftHull ~= lCand;
-		if(leftGhost){
-		  triDB.deleteTriangle(Triangle(lCand, rToL.second, TriDB.GHOST));
-		}
-		triDB.deleteTriangle(Triangle(rToL.second, lCand, nextCand));
-
-		leftGhost = false; //just deleted the ghost, if there was one
+		//		writefln("erasing edge left side: %d, %d", rToL.second, lCand);
+		eraseEdge(triDB, CCWEdge(Pair(rToL.second, lCand)), points);
 		lCand = nextCand;
-		nextCand = triDB.adjacent(rToL.second, lCand);
+		nextCand = triDB.adjacentRealIfExists(rToL.second, lCand);
+		//		writeln("left nextCand, ", nextCand);
 	  }
 	}
+	//	writeln("computing next rCand");
+	auto rCand = hullAdvance(triDB, reverse(rToL)).second;
+	//	writeln("rcand: ", rCand);
 
-	int rCand;
-	if(!rightHull.empty){
-	  rCand = rightHull.back;
-	  rightHull.popBack();
-	} else {
-	  writeln("computing next rCand");
-	  rCand = hullAdvance(triDB, reverse(rToL)).second;
-	  rightGhost = true;
-	}
-	writeln("rcand: ", rCand);
-	bool rValid = (rCand != TriDB.GHOST) && rightOf(points[rCand], points[rToL.first], points[rToL.second]);
+	bool rValid = rightOf(points[rCand], points[rToL.first], points[rToL.second]);
 
 	if(rValid){
-	  int nextCand = triDB.adjacent(rCand, rToL.first);
-	  while(nextCand != TriDB.GHOST &&
+	  int nextCand = triDB.adjacentRealIfExists(rCand, rToL.first);
+	  //	  writeln("right nextCand, ", nextCand);
+	  while(!TriDB.isGhost(nextCand) &&
 			isInCircle(points[rToL.second], points[rToL.first], points[rCand], points[nextCand])){
-		rightHull ~= rCand;
 
-		if(rightGhost){
-		  triDB.deleteTriangle(Triangle(rToL.first, rCand, TriDB.GHOST));
-		}
-		triDB.deleteTriangle(Triangle(rCand, rToL.first, nextCand));
-
-		rightGhost = false;
+		//		writefln("erasing edge right side: %d, %d", rCand, rToL.first);
+		eraseEdge(triDB, CCWEdge(Pair(rCand, rToL.first)), points);
 		rCand = nextCand;
-		nextCand = triDB.adjacent(rCand, rToL.first);
+		nextCand = triDB.adjacentRealIfExists(rCand, rToL.first);
+		//		writeln("right nextCand, ", nextCand);
 	  }
 	}
-
+	//	writefln("candidates: lcand: %d, rcand: %d", lCand, rCand);
 	if(!lValid && !rValid){ break; }
+	
 	if(!lValid ||
 	   (rValid && isInCircle(points[lCand], points[rToL.second],
 							 points[rToL.first], points[rCand]))){
-	  //pick rCand
-	  if(rightGhost){
-		triDB.deleteTriangle(Triangle(rToL.first, rCand, TriDB.GHOST));
-		rightGhost = false;
-	  }
-	  triDB.addTriangle(Triangle(rToL.second, rToL.first, rCand));
+
+	  makeTriFromTwoEdges(triDB, rCand, rToL.first, rToL.second, points);
 	  rToL.first = rCand;
-	  leftHull ~= lCand;
+
 	} else {
-	  if(leftGhost){
-		triDB.deleteTriangle(Triangle(lCand, rToL.second, TriDB.GHOST));
-		leftGhost = false;
-	  }
-	  triDB.addTriangle(Triangle(rToL.second, rToL.first, lCand));
+
+	  auto nextLeft = hullAdvance(triDB, rToL).second;
+	  makeTriFromTwoEdges(triDB, rToL.first, rToL.second, nextLeft, points);
+						
 	  rToL.second = lCand;
-	  rightHull ~= rCand;
 	}
+
   }
 
   //add ghost for the bottom and top
-  triDB.addTriangle(Triangle(start.first, start.second, TriDB.GHOST));  
-  triDB.addTriangle(Triangle(rToL.second, rToL.first, TriDB.GHOST));
-  triDB.dump();
-  writeln("computing return edges");
+
+
+  
+  //triDB.addTriangle(Triangle(rToL.first, rToL.second, TriDB.makeGhost(lCand)));
+  //  writeln("computing return edges");
   
   CCWEdge stop = CCWEdge(Pair(rToL.first, rToL.second));
+  writeHulls(to!string("hull"~to!string(meshNumber)~".svg"), points, triDB);
+  writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB);
 
+  hullCheck(triDB, points, start);
   if(byX){
 	//return to vertical, CW from bottom, CCW from top
 	//believe the hull calls will be no-ops, but maybe not
-
-	//it's possible when joining collinear segments for RtoL to actually point from left to right,
-	//so these are backwards...
-	//if this is ByX, then stop should be pointing left or up
-
-
-	/*	if(points[stop.first].x == points[stop.second].x &&
-	   points[stop.first].y > points[stop.second].y){
-	  //stop is pointing down
-	  //reverse start and stop bc start should be pointing the same way
-	  return EdgePair(hullMinYCW!Vec(triDB, points, reverse(stop)),
-					  hullMaxYCCW!Vec(triDB, points, reverse(start)));
-	} else {
-	*/
-	  return EdgePair(hullMinYCW!Vec(triDB, points, start),
-					  hullMaxYCCW!Vec(triDB, points, stop));
-	  //}
+	
+	return EdgePair(hullMinYCW!Vec(triDB, points, start),
+					hullMaxYCCW!Vec(triDB, points, stop));
+	//}
   } else {
 	//return to horizontal, CW from right, CCW from left
-
-	//expect stop to be pointing up
-	//possible for stop to be pointing right... it should point left
-	/*if(points[stop.first].y == points[stop.second].y &&
-	   points[stop.first].x < points[stop.second].x){
-
-	  return EdgePair(hullMaxXCW!Vec(triDB, points, start),
-					  hullMinXCCW!Vec(triDB, points, stop));
-					  } else {*/
-	  return EdgePair(hullMaxXCW!Vec(triDB, points, reverse(stop)),
-					  hullMinXCCW!Vec(triDB, points, reverse(start)));
-	  //}
+	return EdgePair(hullMaxXCW!Vec(triDB, points, reverse(stop)),
+					hullMinXCCW!Vec(triDB, points, reverse(start)));
   }
 }
 
@@ -740,19 +762,17 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
   if(indices.length < 4){
 	return delaunayBaseCase!(Vec,ByX)(triDB, points, indices);
   } else {
-	writeln("recurse.  Indices:");
-	writeln(indices);
+	//	writeln("recurse.  Indices:");
+	//	writeln(indices);
 
 	partitionPoints!(Vec,ByX)(points, indices);
 
 	ulong middle = indices.length/2;
 
 	auto ep1 = delaunayRecurse!(Vec, !ByX)(triDB, points, indices[0..middle]);
-	writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB.getTriangles());
-	triDB.dump();
+	//	writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB.getTriangles());
 	auto ep2 = delaunayRecurse!(Vec, !ByX)(triDB, points, indices[middle..$]);
-	writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB.getTriangles());
-	triDB.dump();
+	//	writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB.getTriangles());
 
 	//because ep2 will be below, if byY, and ep2 will be to the right if byX
 	bool zipByX = ByX;
@@ -762,7 +782,7 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 	static if(ByX){
 	  if(points[ep1.ccwEdge.first].x == points[ep2.cwEdge.first].x){
 		zipByX = false;
-		writefln("swapped zipByX to %s", zipByX);
+		//writefln("swapped zipByX from %s  to %s", ByX, zipByX);
 		ldi = ep2.cwEdge;
 		rdi = ep1.ccwEdge;
 		//all the points must be collinear!  Merge by Y!
@@ -771,10 +791,10 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 		rdi = ep2.ccwEdge;
 	  }
 	} else {
-	  if(points[ep1.ccwEdge.first].y == points[ep2.cwEdge.first].y){
+	  if(points[ep1.cwEdge.first].y == points[ep2.ccwEdge.first].y){
 		//collinear, merge by X
 		zipByX = true;
-		writefln("swapped zipByX to %s", zipByX);
+		//writefln("swapped zipByX from %s to %s", ByX, zipByX);
 		ldi = ep1.cwEdge;
 		rdi = ep2.ccwEdge;
 	  } else {
@@ -784,14 +804,15 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 	}
 
 
-	writefln("getting lower hull edge, byX: %s", zipByX);
-	writefln("ep1: %s", ep1);
-	writefln("ep2: %s", ep2);
-	writefln("ldi: %s,   rdi:  %s", ldi, rdi);
-	CWEdge rToL = getLowerHullEdge(triDB, points, ldi, rdi);
+	//	writefln("getting lower hull edge, byX: %s", zipByX);
+	//	writefln("ep1: %s", ep1);
+	//	writefln("ep2: %s", ep2);
+	//	writefln("ldi: %s,   rdi:  %s", ldi, rdi);
 
-	
-	auto retEdgePair = zipHulls!(Vec)(triDB, points, rToL, zipByX);
+
+	writefln("about to zip hulls with %d total points", indices.length);
+	auto retEdgePair = zipHulls!(Vec)(triDB, points, ldi, rdi, zipByX);
+
 	//since we are either correct or collinear, we should be good.
 	//zip should make sure that things work correctly for the collinear case
 	//	if(ByX == zipByX){
@@ -820,24 +841,18 @@ TriDB delaunayTriangulate(Vec)(const Vec[] points){
 }
 
 
-void writeSVG(Vec)(string filename, const Vec[] points, const Triangle[] tris){
+
+
+//write the header and return points scaled appropriately
+Vec[] prepareSVG(Vec)(ref File f, const Vec[] points, const int[] activePoints){
   import std.array;
   import std.stdio : File;
   import std.algorithm;
   
-  writefln("dumping %s", filename);
-  File f = File(filename, "w");
-
-
-  int[] activePoints = array(tris.map!(a => [a[0], a[1], a[2]])
-							 .joiner()
-							 .filter!(a => a != TriDB.GHOST));
-	
-  
-  activePoints.sort().uniq();
+  //activePoints.sort().uniq();
   if(activePoints.empty){
 	f.writeln("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"800\" ></svg>");
-	return;
+	return [];
   }
   Vec[] usedPoints = activePoints.map!(delegate Vec(int a){ return points[a]; }).array;
 
@@ -845,62 +860,126 @@ void writeSVG(Vec)(string filename, const Vec[] points, const Triangle[] tris){
   Vec minP = Vec(usedPoints.map!("a.x").minElement(), usedPoints.map!("a.y").minElement());
   Vec maxP = Vec(usedPoints.map!("a.x").maxElement(), usedPoints.map!("a.y").maxElement());
 
+  Vec center = 0.5*(minP + maxP);
   
   Vec size = maxP - minP;
   minP -= .03*size;
   maxP += .03*size;
 
   size = maxP - minP;
+  auto maxDim = max(size.x, size.y);
 
-  auto radius = max(size.x, size.y)/100.0f;
+  auto radius = max(size.x, size.y)/200.0f;
 
   auto aspectRatio = size.y/size.x;
+
+  auto width = 800;
+  auto height = 800;//*aspectRatio;
+
+
+  Vec[] scaledPoints = points.map!( a => (a - center)*(1/maxDim))
+	//	.map!(a => Vec(a.x*2.5, a.y))
+	.array;
   
-  auto height = 800*aspectRatio;
+  f.write("<svg xmlns=\"http://www.w3.org/2000/svg\"  ");
+  //  f.writefln("width=\"800\" height=\"%.8f\" viewBox=\"-0.5 %.8f 1 %.8f\" >",
+  //			 height, -.5, 1.0);
+  f.writefln("width=\"%d\" height=\"%d\" viewBox=\"-0.5 -0.5 1 1\" >", width, height);
+  
+  //  f.writefln("<g transform=\"scale(%.8f,  %.8f)\">", (1.0/size.x), (-1.0/size.y)*aspectRatio);
+  //f.writefln( "<g transform=\"translate(%.8f, %.8f)\" >", -(minP.x + .5*size.x), -(minP.y+ .5*size.y));
+  f.writeln("<g transform=\"scale(1, -1)\" >");
 
-  f.write("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"", height,
-		  "\" viewBox=\"-0.5 ", -0.5*aspectRatio, " 1 ", aspectRatio, "\" >\n");
-
-  f.write("<g transform=\"scale(", (1.0/size.x), ", ",  (-1.0/size.y)*aspectRatio, ")\">\n",
-		  "<g transform=\"translate(" , -(minP.x + 0.5*size.x) , ", " , -(minP.y + 0.5*size.y), ")\" >\n");
+  return scaledPoints;
+  
+}
 
 
 
+
+void writeSVG(Vec)(string filename, const Vec[] points, const ref TriDB triDB){
+  import std.array;
+  import std.stdio : File;
+  import std.algorithm;
+
+  writefln("dumping %s", filename);
+  File f = File(filename, "w");
+  auto activePoints = triDB.getActiveVertices();
+  auto scaledPoints = prepareSVG(f, points, activePoints);
+  Triangle[] tris = triDB.getTriangles();
+  
   foreach(const ref tri ; tris){
-	if(tri.v[0] != TriDB.GHOST && tri.v[1] != TriDB.GHOST && tri.v[2] != TriDB.GHOST){
+	if(!TriDB.isGhost(tri.v[0])  && !TriDB.isGhost(tri.v[1]) && !TriDB.isGhost(tri.v[2])){
 	  foreach(i; [0,1,2]){
-		f.write("<line x1=\"" ,  points[tri.v[i]].x, "\" y1=\"", points[tri.v[i]].y ,
-				"\" x2=\"" , points[tri.v[(i+1)%3]].x, "\" y2=\"" , points[tri.v[(i+1)%3]].y,
-				"\" stroke=\"black\" stroke-width=\"" , (0.1*radius), "\" />\n");
+		f.writefln("<line x1=\"%.8f\" y1=\"%.8f\" x2=\"%.8f\" y2=\"%.8f\" " ~
+				   "stroke=\"black\" stroke-width=\"%.8f\" />",
+				   scaledPoints[tri[i]].x, scaledPoints[tri[i]].y,
+				   scaledPoints[tri[i+1]].x, scaledPoints[tri[i+1]].y, .001);
 	  }
 	} else {
-	  auto p1 = (tri.v[0] == TriDB.GHOST) ? tri.v[1] : tri.v[0];
-	  auto p2 = (tri.v[2] == TriDB.GHOST) ? tri.v[1] : tri.v[2];
-	  f.write("<line x1=\"", points[p1].x, "\" y1=\"", points[p1].y,
-			  "\" x2=\"", points[p2].x, "\" y2=\"", points[p2].y,
-			  "\" stroke=\"black\" stroke-width=\"", (0.3*radius), "\" stroke-dasharray=\"5%, 10%\"/>\n");
+	  auto p1 = TriDB.isGhost(tri.v[0]) ? tri.v[1] : tri.v[0];
+	  auto p2 = TriDB.isGhost(tri.v[2]) ? tri.v[1] : tri.v[2];
+	  f.writefln("<line x1=\"%.8f\" y1=\"%.8f\" x2=\"%.8f\" y2=\"%.8f\" " ~
+				 "stroke=\"black\" stroke-width=\"%.8f\" stroke-dasharray=\"2%%, 10%%\"/>",
+				 scaledPoints[p1].x, scaledPoints[p1].y, scaledPoints[p2].x, scaledPoints[p2].y, .002);
 	  
 	}
   }
 
   foreach(i ; activePoints){
-	const auto p = points[i];
-	f.write( "<circle cx=\"", p.x, "\" cy=\"", p.y,  "\" r=\"", radius, "\" fill=\"black\" />\n");
-	f.write( "<g transform=\"translate(", p.x, ", ", p.y, ") scale(1, -1)\" >",
-			 "<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"", radius*2, "\" fill=\"red\" >",
-			 i, "</text></g>\n");
-	  
+	const auto p = scaledPoints[i];
+	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .001);
+	f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
+				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"red\" >%d</text></g>",
+				p.x, p.y, .004, i);
+
   }
-
-	
-	
-  f.write("</g></g>\n</svg>\n");
-
-  
-  
-  
+  f.writeln("</g>\n</svg>");
 }
 
+void writeHulls(Vec)(string filename, const Vec[] points, const ref TriDB triDB){
+  enum colors = ["red", "green", "blue", "purple", "orange", "brown", "pink", "gold", "crimson"];
+
+  writefln("dumping %s", filename);
+  File f = File(filename, "w");
+  auto activePoints = triDB.getActiveVertices();
+  auto scaledPoints = prepareSVG(f, points, activePoints);
+
+  bool[int] neededPoints;
+  foreach(i ; activePoints){ neededPoints[i] = true;}
+
+  int color = 0;
+  foreach(i; activePoints){
+	if(!neededPoints[i]){ continue; }
+	int ccwOfI = i;
+	foreach(vw; triDB.getTriangles(i)){
+	  if(!TriDB.isGhost(vw.first) && TriDB.isGhost(vw.second)){
+		ccwOfI = vw.first;
+		break;
+	  }
+	}
+	//not on the hull, skip this
+	if(ccwOfI == i){ continue; }
+	CCWEdge e = CCWEdge(Pair(i, ccwOfI));
+	CCWEdge start = e;
+	do{
+	  f.writefln("<line x1=\"%.8f\" y1=\"%.8f\" x2=\"%.8f\" y2=\"%.8f\" stroke=\"%s\" stroke-width=\"%.8f\" />",
+			   scaledPoints[e.first].x, scaledPoints[e.first].y,
+			   scaledPoints[e.second].x, scaledPoints[e.second].y,
+			   colors[color % colors.length], .001);
+	  neededPoints[e.first] = false;
+	  e = hullAdvance(triDB, e);
+			   
+	  
+	}while(e != start);
+	++color;
+  }
+  writefln("hulls this frame: %d" , color);
+  f.writeln("</g>\n</svg>");
+}
+
+
+/*
 unittest{
 
   writeln("\n\n\n2 points test");
@@ -990,3 +1069,4 @@ unittest{
 }
 
   
+*/

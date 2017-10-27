@@ -19,13 +19,16 @@ public:
   }
   
   void opOpAssign(string op)(auto ref T t) if(op == "~"){
-	if(data.length < N){
-	  T* dataPtr = cast(T*)localStorage.ptr;
-	  data = dataPtr[0..data.length + 1];
+	//	import std.stdio;
+	T* dataPtr = cast(T*)localStorage.ptr;
+	if(data.length == 0 || (dataPtr == data.ptr && data.length < N)){
+	  //use the built in array
+	  data = dataPtr[0..(data.length + 1)];
 	  data[$-1] = t;
+	  //	  writeln("using local append, ", data.ptr);
 	} else {
-
 	  data ~= t;
+	  //	  writeln("using slice append, ", data.ptr);
 	}
   }
 
@@ -42,7 +45,7 @@ public:
 
 unittest {
   import std.stdio;
-  
+  writeln("SSO UnitTests");
   SSOVector!(int, 4) i4;
 
   assert(i4.length == 0);
@@ -67,5 +70,21 @@ unittest {
   i4.popBack();
   assert(i4.length == 9);
   assert(i4.back == 16);
-  
+
+
+  writeln("last test");
+  SSOVector!(int, 5) i5;
+  foreach(i; 0..10){
+	i5 ~= 1;
+  }
+  foreach(ref i ; i5){
+	i = 0;
+  }
+  foreach(i; 0..8){
+	i5.popBack();
+  }
+  i5 ~= 0;
+  foreach(i ; i5){
+	assert(i5.back == 0);
+  }
 }

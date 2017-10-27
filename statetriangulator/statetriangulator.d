@@ -69,9 +69,9 @@ int main(string[] args){
   }
 
   auto triDB = delaunayTriangulate(points);
-  auto tris = triDB.getTriangles();
+  //  auto tris = triDB.getTriangles();
   string svgFile = to!string(fromStringz(DBFReadStringAttribute(dbfHandle, shapeNumber, 5)) ~ ".svg");
-  writeSVG(svgFile, points, tris);
+  writeSVG(svgFile, points, triDB);
   
 
   return 0;
