@@ -183,21 +183,29 @@ struct TriDB{
   }
   
 
-  bool adjacentExists(int u, int v) const{
+  //
+  bool edgeExists(int u, int v) const{
 	assert(!isGhost(u));
+	assert(!isGhost(v));
 	foreach(const ref pr ; triangles[u]){
-	  if(pr.first == v){
+	  //necessary because of my backwards-ish ghost convention...
+	  if(pr.first == v || pr.second == v){
 		return true;
 	  }
 	}
 	return false;
   }
 
-  /*  Pair adjacentTriangle(int u) const{
+  Pair adjacentRealTriangle(int u) const{
 	assert(!isGhost(u));
-	return triangles[u].length == 0 ? Pair(-1, -1) : triangles[u][0];
+	foreach(ref pr; triangles[u]){
+	  if(!isGhost(pr.first) && !isGhost(pr.second)){
+		return pr;
+	  }
+	}
+	assert(false);
 
-	}*/
+  }
 
   Pair[] getTriangles(int i) const{
 	return triangles[i].dup();
@@ -225,30 +233,36 @@ struct TriDB{
 	return ret;
   }
 
+  void dumpVertex(int i) const{
+	
+	auto set = triangles[i];
+	foreach(pr ; set){
+	  write("( ");
+	  if(isGhost(pr.first)){
+		write("Ghost ", unGhost(pr.first));
+	  } else {
+		write(pr.first);
+	  }
+	  write(", ");
+	  if(isGhost(pr.second)){
+		write("Ghost ", unGhost(pr.second));
+	  } else {
+		write(pr.second);
+	  }
+	  
+	  write(" ) ");
+	}	  
+  }
+  
   void dump() const {
 	import std.stdio;
 	writeln("normal entries");
-	foreach(i, const ref set ; triangles){
-	  if(!set.empty){
+	foreach(i; 0..triangles.length){
+	  if(!triangles[i].empty){
 		write(i, ": ");
-		foreach(pr ; set){
-		  write("( ");
-		  if(isGhost(pr.first)){
-			write("Ghost ", unGhost(pr.first));
-		  } else {
-			write(pr.first);
-		  }
-		  write(", ");
-		  if(isGhost(pr.second)){
-			write("Ghost ", unGhost(pr.second));
-		  } else {
-			write(pr.second);
-		  }
-		  
-		  write(" ) ");
-		}
-		writeln();
+		dumpVertex(to!int(i));
 	  }
+	  writeln();
 	}
 	
   }
@@ -257,9 +271,9 @@ private:
 
   SSOVector!(Pair, 9)[] triangles;
   //each elements of triangles[i] means there is a triangle i, pr.first, pr.second
-  //if one of the elements in the pair, it means it is a GHOST edge
+  //if one of the elements in the pair has its MSB set, it means it is a GHOST edge
   //which and the negative value is the next vertex in a CCW ordering
-  //for example if triangle[i] has j, -k, then i, j, k are consecutive edges
+  //for example if triangle[i] has j, -k, then i, j, and j, k are consecutive edges
   //in a CCW ordering
 
 
@@ -318,7 +332,7 @@ CWEdge hullReverse(const ref TriDB triDB, CWEdge e){
 
 
 void hullCheck(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge start){
-  writeln("hull check");
+  //writeln("hull check");
   CWEdge e = hullAdvance(triDB, start);
   int cMax = 100000;
   int count = 0;
@@ -332,6 +346,26 @@ void hullCheck(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge start)
 	writeln("didn't make it back to start");
 	assert(false);
   }
+
+  /*
+  foreach(const ref tri ; triDB.triangles){
+
+	foreach (const  ref pr ; tri){
+	  if(TriDB.isGhost(pr.first)){
+		if(pr.second == TriDB.unGhost(pr.first)){
+		  writeln("wtf: ghost " , TriDB.unGhost(pr.first), "...", pr.second);
+		}
+		assert(pr.second != TriDB.unGhost(pr.first));
+	  }
+	  if(TriDB.isGhost(pr.second)){
+		assert(pr.first != TriDB.unGhost(pr.second));
+	  }
+	  assert(pr.first != pr.second);
+	  assert(!TriDB.isGhost(pr.first) || !TriDB.isGhost(pr.second));
+	}
+	
+	}*/
+
   
 }
 
@@ -462,11 +496,11 @@ int meshNumber = 0;
 EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, int[] indices){
   import std.algorithm : minElement, maxElement;
 
-  //    writefln("base case byX: %s with %d points", ByX, indices.length);
+  writefln("base case byX: %s with %d points", ByX, indices.length);
 
-  //  foreach(ind; indices){
-  //	writefln("%d: %.8f, %.8f", ind, points[ind].x, points[ind].y);
-  //  }
+  foreach(ind; indices){
+  	writefln("%d: %.8f, %.8f", ind, points[ind].x, points[ind].y);
+  }
   
   auto yMap(int a){ return Tuple!(float, float)(points[indices[a]].y, points[indices[a]].x); }
   auto xMap(int a){ return Tuple!(float, float)(points[indices[a]].x, points[indices[a]].y);}
@@ -640,18 +674,18 @@ void advanceToLowerHullEdge(Vec)(const ref TriDB triDB, const ref Vec[] points,
  
 EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWEdge rdi, bool byX){
   
-  //  writefln("zipping, ByX: %s, ldi: %s, rdi: %s", byX, ldi, rdi);
+  //writefln("zipping, ByX: %s, ldi: %s, rdi: %s", byX, ldi, rdi);
   advanceToLowerHullEdge(triDB, points, ldi, rdi);
   
   CCWEdge rToL = CCWEdge(Pair(rdi.first, ldi.first)); //CCW when viewed from the top
   //it's CW if we're on the bottom
   CWEdge start = CWEdge(Pair(rToL.first, rToL.second)); //save this for later
   
-  //  writeln("updated ldi: ", ldi, " rdi: " , rdi);
-  // writefln("rtol to start: %d, %d", rToL.first, rToL.second);
+  //writeln("updated ldi: ", ldi, " rdi: " , rdi);
+  //writefln("rtol to start: %d, %d", rToL.first, rToL.second);
 
   auto preRdi = hullReverse(triDB, rdi).first;
-  //  writeln("preRdi: ", preRdi);
+  //writeln("preRdi: ", preRdi);
   //update the ghost triangle above rdi
   triDB.deleteTriangle(Triangle(preRdi, rdi.first, TriDB.makeGhost(rdi.second)));
   triDB.addTriangle(Triangle(preRdi, rToL.first, TriDB.makeGhost(rToL.second)), points);
@@ -737,9 +771,9 @@ EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWE
   //  writeln("computing return edges");
   
   CCWEdge stop = CCWEdge(Pair(rToL.first, rToL.second));
-  writeHulls(to!string("hull"~to!string(meshNumber)~".svg"), points, triDB);
-  writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB);
-
+  //  writeHulls(to!string("hull"~to!string(meshNumber)~".svg"), points, triDB);
+  //  writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB);
+  writeln("zipped. Checking hulls");
   hullCheck(triDB, points, start);
   if(byX){
 	//return to vertical, CW from bottom, CCW from top
@@ -778,11 +812,15 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 	bool zipByX = ByX;
 	CWEdge ldi;
 	CCWEdge rdi;
+
+	//writeln("ep1: ", ep1);
+	//writeln("ep2: ", ep2);
+
 	
 	static if(ByX){
 	  if(points[ep1.ccwEdge.first].x == points[ep2.cwEdge.first].x){
 		zipByX = false;
-		//writefln("swapped zipByX from %s  to %s", ByX, zipByX);
+		writefln("swapped zipByX from %s  to %s", ByX, zipByX);
 		ldi = ep2.cwEdge;
 		rdi = ep1.ccwEdge;
 		//all the points must be collinear!  Merge by Y!
@@ -791,10 +829,12 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 		rdi = ep2.ccwEdge;
 	  }
 	} else {
-	  if(points[ep1.cwEdge.first].y == points[ep2.ccwEdge.first].y){
+
+	  //??? tricky and scary!!!
+	  if(points[ep1.cwEdge.second].y == points[ep2.ccwEdge.first].y){
 		//collinear, merge by X
 		zipByX = true;
-		//writefln("swapped zipByX from %s to %s", ByX, zipByX);
+		writefln("swapped zipByX from %s to %s", ByX, zipByX);
 		ldi = ep1.cwEdge;
 		rdi = ep2.ccwEdge;
 	  } else {
@@ -840,6 +880,122 @@ TriDB delaunayTriangulate(Vec)(const Vec[] points){
   
 }
 
+
+
+struct ClearCavityList{ int[] left; int[] right;}
+
+//erase all triangles that cross the segment s
+//return the points on the polygons on other side of the segment s
+//once we add s to the triangulation, we'll need to retriangulate those holes
+ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
+
+  int[] leftPoints = [s.second];
+  int[] rightPoints = [s.first];
+
+  auto s1 = points[s.first];
+  auto s2 = points[s.second];
+
+  auto u = s.first;
+  auto vw = triDB.adjacentRealTriangle(u);
+  struct Segment{ Vec first, second; }
+
+  //find the triangle at s that contains the segment
+  while(!segmentsCross(Segment(s1, s2),
+					   Segment(points[vw.first], points[vw.second]))){
+	int adj = triDB.adjacentReal(u, vw.second);
+	vw = Pair(vw.second, adj);
+  }
+  //and delete it
+  writeln("about to delete first edge: ", u, vw);
+  triDB.deleteTriangle(Triangle(u, vw.first, vw.second));
+
+  if(leftOf(points[vw.first], s1, s2)){
+	leftPoints ~= vw.first;
+	rightPoints ~= vw.second;
+  } else {
+	leftPoints ~= vw.second;
+	rightPoints ~= vw.first;
+  }
+
+  //it had better be real
+  auto adj = triDB.adjacentReal(vw.second, vw.first);
+
+  while(adj != s.second){
+	int newAdj;
+	writeln("in while loop, about to delete: ", vw.second, ", ", vw.first, ", ", adj);
+	triDB.deleteTriangle(Triangle(vw.second, vw.first, adj));
+
+	if(leftOf(points[adj], s1, s2)){
+	  leftPoints ~= adj;
+	} else {
+	  rightPoints ~= adj;
+	}
+	if(segmentsCross(Segment(s1, s2), Segment(points[vw.first], points[adj]))){
+	  newAdj = triDB.adjacentReal(adj, vw.first);
+	  vw = Pair(vw.first, adj);
+	} else {
+	  newAdj = triDB.adjacentReal(vw.second, adj);
+	  vw = Pair(adj, vw.second);
+	}
+	adj = newAdj;
+  }
+  triDB.deleteTriangle(Triangle(adj, vw.second, vw.first));
+  rightPoints ~= s.second;
+  leftPoints ~= s.first;
+  import std.algorithm : reverse;
+  reverse(leftPoints[1..$-1]);
+  return ClearCavityList(leftPoints, rightPoints);
+}
+
+void cavityInsertVertex(Vec)(const Vec[] points, ref TriDB triDB, int[] poly, int u, int v, int w){
+
+  
+}
+
+
+
+//fill a cavity cleared by clearCavity.
+void fillCavity(Vec)(const Vec[] points, ref TridDB triDB, int[] poly){
+  auto first = poly[0];
+  auto last = poly[$-1];
+
+  int[] perm = iota(1, poly.length - 1);
+  randomShuffle(perm);
+
+  int[] prev = new int[poly.length];
+  int[] next = new int[poly.length];
+  foreach(i; 0..poly.length){
+	prev[i] = (poly.length + i -1) % poly.length;
+	next[i] = (i + 1) % poly.length;
+  }
+
+
+  auto o2ds = poly.map!(delegate(int i){
+	  return orient2D(points[first], points[last], points[i]);
+	}).array;
+
+  foreach(i; iota(perm.size() -1, -1, -1)){
+	while(o2ds[perm[i]] < o2ds[prev[perm[i]]]
+		  && o2ds[perm[i]] < o2ds[next[perm[i]]]){
+	  auto j = uniform(0, -1);
+	  swap(perm[i], perm[j]);
+	}
+	next[prev[perm[i]]] = next[perm[i]];
+	prev[next[perm[i]]] = prev[perm[i]];
+  }
+
+  TriDB cavityTriangles(poly.size);
+  cavityTriangles.addTriangle(Triangle(0, perm[0], poly.size() -1));
+  foreach(i; 1..perm.length){
+	cavityInsertVertex(cavityTriangles, points, poly, perm[i], next[perm[i]], prev[perm[i]]);
+  }
+
+  foreach(i; 0..poly.length){
+	foreach(const ref pr; cavityTriangles.triangles){
+	  triDB.triangles[poly[i]] ~= Pair(pr.first, pr.second);
+	}
+  }
+}
 
 
 
@@ -914,7 +1070,7 @@ void writeSVG(Vec)(string filename, const Vec[] points, const ref TriDB triDB){
 		f.writefln("<line x1=\"%.8f\" y1=\"%.8f\" x2=\"%.8f\" y2=\"%.8f\" " ~
 				   "stroke=\"black\" stroke-width=\"%.8f\" />",
 				   scaledPoints[tri[i]].x, scaledPoints[tri[i]].y,
-				   scaledPoints[tri[i+1]].x, scaledPoints[tri[i+1]].y, .001);
+				   scaledPoints[tri[i+1]].x, scaledPoints[tri[i+1]].y, .0002);
 	  }
 	} else {
 	  auto p1 = TriDB.isGhost(tri.v[0]) ? tri.v[1] : tri.v[0];
@@ -931,7 +1087,7 @@ void writeSVG(Vec)(string filename, const Vec[] points, const ref TriDB triDB){
 	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .001);
 	f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
 				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"red\" >%d</text></g>",
-				p.x, p.y, .004, i);
+				p.x, p.y, .002, i);
 
   }
   f.writeln("</g>\n</svg>");
@@ -979,7 +1135,7 @@ void writeHulls(Vec)(string filename, const Vec[] points, const ref TriDB triDB)
 }
 
 
-/*
+
 unittest{
 
   writeln("\n\n\n2 points test");
@@ -1012,7 +1168,7 @@ unittest{
   }
 
 
-  writeSVG("test4.svg", points, tris);
+  writeSVG("test4.svg", points, triDB);
   
   
   assert(tris.length == 6);
@@ -1021,7 +1177,7 @@ unittest{
 }
 
 
-unittest{
+/*unittest{
   //horizontal/vertical line test
 
   foreach(np ; 2..20){
@@ -1051,7 +1207,7 @@ unittest{
 
   //combined horizontal/vertical:
 
-  foreach(np ; 2..5){
+  foreach(np ; 2..10){
 	writefln("\n\n\npathalogical lines test: %d", np);
 	vec2[] points;
 	foreach(i ; 1..np){
@@ -1062,11 +1218,32 @@ unittest{
 	auto triDB = delaunayTriangulate(points);
 	writeln("HLTest finished.  TriDB Contents:");
 	triDB.dump();
-	writeSVG(to!string("pathalogical" ~ to!string(np) ~ ".svg"), points, triDB.getTriangles());
+	writeSVG(to!string("pathalogical" ~ to!string(np) ~ ".svg"), points, triDB);
   }
 
   
 }
+*/
+  
+
+unittest {
+  writeln("clearCavityTest");
+  //vec2[] points = [ vec2(0, 0), vec2(1, 1), vec2(.4, .5), vec2(.4, .3), vec2(.6, .7), vec2(.6, .5) ];
+  vec2[] points = [vec2(-114.052963256836, 37.592784881592), vec2(-114.052474975586, 37.604774475098), vec2(-114.052474975586, 37.604778289795), vec2(-114.051727294922, 37.745998382568), vec2(-114.051788330078, 37.746250152588), vec2(-114.051666259766, 37.746959686279)];
+  foreach( ref p; points){
+	writefln("%0.12f, %0.12f", p.x, p.y);
+  }
+  auto triDB = delaunayTriangulate(points);
+  writeln("triangulated");
+  triDB.dump();
+
+  foreach(i; 0..points.length){
+	if(!triDB.edgeExists(cast(int)i, cast(int)((i+1)%points.length))){
+	  writeln("clearing cavity: ", i, ' ', (i+1) % points.length);
+	  clearCavity(points, triDB, Pair(cast(int)i, cast(int)((i+1)%points.length)));
+	  triDB.dump();
+	}
+  }
 
   
-*/
+}

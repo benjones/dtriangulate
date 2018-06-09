@@ -352,3 +352,14 @@ unittest{
   
   
 }
+
+bool segmentsCross(Segment)(auto ref Segment a, auto ref Segment b){
+  bool bCrossesA = (orient2D(a.first, a.second, b.first) > 0) !=
+	(orient2D(a.first, a.second, b.second) > 0);
+  bool aCrossesB = (orient2D(b.first, b.second, a.first) > 0) !=
+	(orient2D(b.first, b.second, a.second) > 0);
+  
+  //both must be true
+  return bCrossesA && aCrossesB;
+
+}

@@ -59,19 +59,48 @@ int main(string[] args){
   import std.algorithm.iteration : uniq;
   import std.array : array;
   points = points.uniq.array;
+  if(points[0] == points[$-1]){
+	points = points[0..$-1]; 
+  }
 
+  /*
   import std.algorithm.searching : findAdjacent;
   vec2[] rng = points[];
   while((rng = rng.findAdjacent).length > 0){
 	write("duplicate: ");
 	writeln(rng[0]);
 	rng = rng[1..$];
+	}*/
+  writeln("number of unique points: ", points.length);
+  //points = points[0..282];
+  foreach( ref p; points){
+	writef("vec2(%0.12f, %0.12f), ", p.x, p.y);
   }
 
+  
   auto triDB = delaunayTriangulate(points);
+
   //  auto tris = triDB.getTriangles();
   string svgFile = to!string(fromStringz(DBFReadStringAttribute(dbfHandle, shapeNumber, 5)) ~ ".svg");
   writeSVG(svgFile, points, triDB);
+  
+  
+  foreach(i; 0..points.length){
+	if(!triDB.edgeExists(cast(int)i, cast(int)((i+1)%points.length))){
+	  writeln("clearing cavity: ", i, ' ', (i+1) % points.length);
+
+	  writeln("vertices for ", i);
+	  triDB.dumpVertex(to!int(i));
+	  writeln();
+	  writeln("vertices for ", (i +1) % points.length);
+	  triDB.dumpVertex(to!int( (i + 1) % points.length));
+	  writeln();
+	  
+	  clearCavity(points, triDB, Pair(cast(int)i, cast(int)((i+1)%points.length)));
+	  string filename = to!string("cleared" ~ to!string(i) ~ ".svg");
+	  writeSVG(filename, points, triDB);
+	}
+  }
   
 
   return 0;
