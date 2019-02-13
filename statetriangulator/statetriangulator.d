@@ -3,7 +3,10 @@ int main(string[] args){
   import std.stdio;
   import std.string;
   import std.conv;
-
+  import std.algorithm;
+  import std.array;
+  import std.range;
+  
   import shapefil;
   import dtriangulate.triangulate;
 
@@ -83,6 +86,11 @@ int main(string[] args){
   //  auto tris = triDB.getTriangles();
   string svgFile = to!string(fromStringz(DBFReadStringAttribute(dbfHandle, shapeNumber, 5)) ~ ".svg");
   writeSVG(svgFile, points, triDB);
+
+
+  auto segments = iota(points.length).map!(i => Pair(to!int(i), to!int((i + 1)%points.length))).array;
+  //make constrained delaunay next
+  makeConstrainedDelaunay(points, triDB, segments);
   
   
   foreach(i; 0..points.length){

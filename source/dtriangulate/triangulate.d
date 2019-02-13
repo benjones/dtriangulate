@@ -8,7 +8,8 @@ import gl3n.linalg : vec2;
 import std.stdio;
 import std.conv;
 
-struct Pair{ int first, second;
+struct Pair{
+  int first, second;
   bool opEquals(Pair rhs) const{
 	return first == rhs.first && second == rhs.second;
   }
@@ -162,7 +163,19 @@ struct TriDB{
 	
   }
 
+  bool adjacentRealExists(int u, int v) const{
+	assert(!isGhost(u));
+	assert(!isGhost(v));
+	foreach(const ref pr; triangles[u]){
+	  if(pr.first == v && !isGhost(pr.second)){
+		return true;
+	  }
+	}
+	return false;
+  }
+  
   //return the real adjacent vertex if it exists
+  //otherwise returns the ghost version
   int adjacentRealIfExists(int u, int v) const{
 	assert(!isGhost(u));
 	assert(u != v);
@@ -213,10 +226,10 @@ struct TriDB{
   
   Triangle[] getTriangles() const{
 	Triangle[] ret;
-	foreach(int i, const ref svec; triangles){
+	foreach(size_t i, const ref svec; triangles){
 	  foreach(const ref pr; svec){
 		if((isGhost(pr.first) || i < pr.first) && (isGhost(pr.second) || i < pr.second)){
-		  ret ~= Triangle(i, pr.first, pr.second);
+		  ret ~= Triangle(to!int(i), pr.first, pr.second);
 		}
 	  }
 	}
@@ -225,9 +238,9 @@ struct TriDB{
 
   int[] getActiveVertices() const{
 	int[] ret;
-	foreach(int i, const ref svec; triangles){
+	foreach(size_t i, const ref svec; triangles){
 	  if(!svec.empty){
-		ret ~= i;
+		ret ~= to!int(i);
 	  }
 	}
 	return ret;
@@ -881,6 +894,20 @@ TriDB delaunayTriangulate(Vec)(const Vec[] points){
 }
 
 
+void makeConstrainedDelaunay(Vec)(const Vec[] points, ref TriDB triDB, const Pair[] segments){
+  foreach(seg; segments){
+	if(!triDB.edgeExists(seg.first, seg.second)){
+	  addSegment(points, triDB, seg);
+	}
+  }
+}
+
+void addSegment(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
+  auto holes = clearCavity(points, triDB, s);
+  fillCavity(points, triDB, holes.left);
+  fillCavity(points, triDB, holes.right);
+}
+
 
 struct ClearCavityList{ int[] left; int[] right;}
 
@@ -949,24 +976,45 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 
 void cavityInsertVertex(Vec)(const Vec[] points, ref TriDB triDB, int[] poly, int u, int v, int w){
 
+  if(triDB.adjacentRealExists(w,v)){
+
+	auto x = triDB.adjacentReal(w, v);
+	if(orient2D(points[poly[u]], points[poly[v]], points[poly[w]]) > 0 &&
+	   !inCircle(points[poly[u]], points[poly[v]], points[poly[w]], points[poly[x]])){
+	  //uvw is constrained delaunay because the point on the other side is far enough away
+	  triDB.addTriangle(Triangle(u, v, w), points);
+	} else {
+	  triDB.deleteTriangle(Triangle(w, v, x));
+	  cavityInsertVertex(points, triDB, poly, u, v, x);
+	  cavityInsertVertex(points, triDB, poly, u, x, w);
+	}
+  } else {
+	//uvw is constrained delaunay, because there's nothing on the other side of vw
+	triDB.addTriangle(Triangle(u, v, w), points);
+  }
   
 }
 
 
 
 //fill a cavity cleared by clearCavity.
-void fillCavity(Vec)(const Vec[] points, ref TridDB triDB, int[] poly){
+void fillCavity(Vec)(const Vec[] points, ref TriDB triDB, int[] poly){
+  import std.range;
+  import std.array;
+  import std.random;
+  import std.algorithm;
+
+  
   auto first = poly[0];
   auto last = poly[$-1];
-
-  int[] perm = iota(1, poly.length - 1);
+  int[] perm = iota(1, to!int(poly.length - 1)).array;
   randomShuffle(perm);
 
   int[] prev = new int[poly.length];
   int[] next = new int[poly.length];
   foreach(i; 0..poly.length){
-	prev[i] = (poly.length + i -1) % poly.length;
-	next[i] = (i + 1) % poly.length;
+	prev[i] = to!int((poly.length + i -1) % poly.length);
+	next[i] = to!int((i + 1) % poly.length);
   }
 
 
@@ -974,7 +1022,7 @@ void fillCavity(Vec)(const Vec[] points, ref TridDB triDB, int[] poly){
 	  return orient2D(points[first], points[last], points[i]);
 	}).array;
 
-  foreach(i; iota(perm.size() -1, -1, -1)){
+  foreach(i; iota(perm.length -1, -1, -1)){
 	while(o2ds[perm[i]] < o2ds[prev[perm[i]]]
 		  && o2ds[perm[i]] < o2ds[next[perm[i]]]){
 	  auto j = uniform(0, -1);
@@ -984,14 +1032,15 @@ void fillCavity(Vec)(const Vec[] points, ref TridDB triDB, int[] poly){
 	prev[next[perm[i]]] = prev[perm[i]];
   }
 
-  TriDB cavityTriangles(poly.size);
-  cavityTriangles.addTriangle(Triangle(0, perm[0], poly.size() -1));
+  TriDB cavityTriangles = TriDB(poly.length);
+  cavityTriangles.addTriangle(Triangle(0, perm[0], to!int(poly.length -1)), points);
+  
   foreach(i; 1..perm.length){
-	cavityInsertVertex(cavityTriangles, points, poly, perm[i], next[perm[i]], prev[perm[i]]);
+	cavityInsertVertex(points, cavityTriangles, poly, perm[i], next[perm[i]], prev[perm[i]]);
   }
 
   foreach(i; 0..poly.length){
-	foreach(const ref pr; cavityTriangles.triangles){
+	foreach(const ref pr; cavityTriangles.triangles[i]){
 	  triDB.triangles[poly[i]] ~= Pair(pr.first, pr.second);
 	}
   }
