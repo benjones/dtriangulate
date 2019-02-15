@@ -91,8 +91,11 @@ int main(string[] args){
   auto segments = iota(points.length).map!(i => Pair(to!int(i), to!int((i + 1)%points.length))).array;
   //make constrained delaunay next
   makeConstrainedDelaunay(points, triDB, segments);
+
+  string svgFileConstrained = to!string(svgFile[0..$-4] ~ "constrained.svg");
+  writeSVG(svgFileConstrained, points, triDB);
   
-  
+  /*  
   foreach(i; 0..points.length){
 	if(!triDB.edgeExists(cast(int)i, cast(int)((i+1)%points.length))){
 	  writeln("clearing cavity: ", i, ' ', (i+1) % points.length);
@@ -108,7 +111,7 @@ int main(string[] args){
 	  string filename = to!string("cleared" ~ to!string(i) ~ ".svg");
 	  writeSVG(filename, points, triDB);
 	}
-  }
+	}*/
   
 
   return 0;
