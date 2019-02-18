@@ -4,6 +4,8 @@ public import dtriangulate.tridb;
 import std.typecons;
 import std.stdio;
 import std.conv;
+import std.range;
+
 
 alias CCWEdge = Typedef!(Pair, Pair.init, "ccw");
 alias CWEdge = Typedef!(Pair, Pair.init, "cw");
@@ -17,8 +19,8 @@ CCWEdge reverse(CWEdge e){
 
 void partitionPoints(Vec, bool ByX)(const Vec[] points, int[] indices){
   import std.algorithm;
-  write("partition, num points: ");
-  writeln(indices.length);
+  //write("partition, num points: ");
+  //writeln(indices.length);
   static if(ByX){
 	indices.topN!(delegate bool(int a, int b){
 		//lexicographically
@@ -219,11 +221,11 @@ int meshNumber = 0;
 EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points, int[] indices){
   import std.algorithm : minElement, maxElement;
 
-  writefln("base case byX: %s with %d points", ByX, indices.length);
+  //writefln("base case byX: %s with %d points", ByX, indices.length);
 
-  foreach(ind; indices){
-  	writefln("%d: %.8f, %.8f", ind, points[ind].x, points[ind].y);
-  }
+  //foreach(ind; indices){
+  //	writefln("%d: %.8f, %.8f", ind, points[ind].x, points[ind].y);
+  //}
   
   auto yMap(int a){ return Tuple!(float, float)(points[indices[a]].y, points[indices[a]].x); }
   auto xMap(int a){ return Tuple!(float, float)(points[indices[a]].x, points[indices[a]].y);}
@@ -496,7 +498,7 @@ EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWE
   CCWEdge stop = CCWEdge(Pair(rToL.first, rToL.second));
   //  writeHulls(to!string("hull"~to!string(meshNumber)~".svg"), points, triDB);
   //  writeSVG(to!string("mesh"~to!string(meshNumber++)~".svg"), points, triDB);
-  writeln("zipped. Checking hulls");
+  //writeln("zipped. Checking hulls");
   hullCheck(triDB, points, start);
   if(byX){
 	//return to vertical, CW from bottom, CCW from top
@@ -573,7 +575,7 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 	//	writefln("ldi: %s,   rdi:  %s", ldi, rdi);
 
 
-	writefln("about to zip hulls with %d total points", indices.length);
+	//writefln("about to zip hulls with %d total points", indices.length);
 	auto retEdgePair = zipHulls!(Vec)(triDB, points, ldi, rdi, zipByX);
 
 	//since we are either correct or collinear, we should be good.
@@ -611,6 +613,43 @@ void makeConstrainedDelaunay(Vec)(const Vec[] points, ref TriDB triDB, const Pai
 	}
   }
 }
+
+void cutOffScraps(Vec)(const Vec[] points, ref TriDB triDB, const Pair[] segments){
+
+  bool[Pair] segmentSet;
+  foreach(seg; segments){
+	segmentSet[seg] = true;
+  }
+  
+  
+  auto outsideEdge = triDB.findOutsideEdge();
+  Triangle[] toDelete = [ outsideEdge];
+
+  while(toDelete.length > 0){
+	auto tri = toDelete[$-1];
+	toDelete.popBack();
+
+	if(!triDB.containsTriangle(tri)){
+	  continue;
+	}
+	foreach(i; 0..3){
+	  auto v = tri[i];
+	  auto w = tri[i+1];
+
+	  if( !((Pair(v, w) in segmentSet ) || (Pair(w, v) in segmentSet)) ){
+		if(triDB.anyAdjacentExists(w, v)){
+		  toDelete ~= Triangle(w, v, triDB.adjacentRealIfExists(w, v));
+		}
+	  }
+	}
+	writeln("deleting ", tri);
+	triDB.deleteTriangle(tri);
+	
+  }
+  
+}
+
+
 
 void addSegment(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
   auto holes = clearCavity(points, triDB, s);

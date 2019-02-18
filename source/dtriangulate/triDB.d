@@ -7,11 +7,20 @@ import gl3n.linalg : vec2;
 
 import std.stdio;
 import std.conv;
+import std.algorithm;
 
 struct Pair{
   int first, second;
   bool opEquals(Pair rhs) const{
 	return first == rhs.first && second == rhs.second;
+  }
+  
+  size_t toHash() const @safe nothrow{
+	size_t ret = cast(size_t)(first);
+	ret <<= 32;
+	size_t ss = cast(size_t)(second);
+	ret |= ss;
+	return ret;
   }
 }
 
@@ -119,27 +128,6 @@ struct TriDB{
 	assert(realCount == deletedCount);
   }
 
-
-  //need to distinguish real neighbors from ghosts!
-  /*  int adjacent(int u, int v) const{
-	write("searching adjacent: ");
-	if(isGhost(u)){ write("Ghost: ", unGhost(u), ", "); }
-	else {write(u, ", ");}
-	if(isGhost(v)){ writeln("Ghost: ", unGhost(v), ", "); }
-	else {writeln(v, ", ");}
-	  
-	assert(!isGhost(u));
-	assert(u != v);
-	foreach(const ref pr; triangles[u]){
-	  if(pr.first == v){
-		return pr.second;
-	  }
-	}
-	assert(false);
-	//return -1;
-	}*/
-
-
   int adjacentGhost(int u, int v) const{
 	assert(!isGhost(u));
 	assert(u != v);
@@ -173,6 +161,20 @@ struct TriDB{
 	}
 	return false;
   }
+
+  bool anyAdjacentExists(int u, int v){
+	//	assert(!isGhost(u));
+	//	assert(!isGhost(v));
+	if(isGhost(u)){ u = unGhost(u); }
+	foreach(const ref pr; triangles[u]){
+	  if( (!isGhost(pr.first) && pr.first == v) ||
+		  (isGhost(pr.first) && unGhost(pr.first) == v)){
+		return true;
+	  }
+	}
+	return false;
+
+  }
   
   //return the real adjacent vertex if it exists
   //otherwise returns the ghost version
@@ -196,7 +198,7 @@ struct TriDB{
   }
   
 
-  //
+
   bool edgeExists(int u, int v) const{
 	assert(!isGhost(u));
 	assert(!isGhost(v));
@@ -288,6 +290,31 @@ struct TriDB{
 	  }
 	}
   }
+
+  //TODO: do this better via caching or something.
+  //ghost vertex is first
+  Triangle findOutsideEdge() const {
+	foreach(i; 0..triangles.length){
+	  foreach(const ref pr; triangles[i]){
+		if(isGhost(pr.first)){
+		  return Triangle(pr.first, pr.second, to!int(i));
+		}
+		if(isGhost(pr.second)){
+		  return Triangle(to!int(i), pr.first, pr.second);
+		}
+	  }
+	}
+	assert(false);
+  }
+
+
+  bool containsTriangle(const ref Triangle tri){
+	if(!isGhost(tri[0])){
+	  return triangles[tri[0]].canFind(Pair(tri[1], tri[2]));
+	} else {
+	  return triangles[tri[1]].canFind(Pair(tri[2], tri[0]));
+	}
+  }
   
 private:
 
@@ -295,7 +322,7 @@ private:
   //each elements of triangles[i] means there is a triangle i, pr.first, pr.second
   //if one of the elements in the pair has its MSB set, it means it is a GHOST edge
   //which and the negative value is the next vertex in a CCW ordering
-  //for example if triangle[i] has j, -k, then i, j, and j, k are consecutive edges
+  //for example if triangle[i] has j, GHOST(k), then i, j, and j, k are consecutive edges
   //in a CCW ordering
 
 
