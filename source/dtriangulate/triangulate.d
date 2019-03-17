@@ -37,22 +37,25 @@ void partitionPoints(Vec, bool ByX)(const Vec[] points, int[] indices){
 
 CWEdge hullAdvance(const ref TriDB triDB, CWEdge e){
   return CWEdge(Pair(e.second,
-					 triDB.adjacentReal(e.second, TriDB.makeGhost(e.first))));
+					 TriDB.unGhost(triDB.adjacent(e.first, e.second))));
 }
 
 CCWEdge hullAdvance(const ref TriDB triDB, CCWEdge e){
   return CCWEdge(Pair(e.second,
-					  TriDB.unGhost(triDB.adjacentGhost(e.first, e.second))));
+					  triDB.adjacent(e.second, TriDB.makeGhost(e.first))));
 }
 
+//go backwards along the hull
 CWEdge hullReverse(const ref TriDB triDB, CWEdge e){
-  return CWEdge(Pair(TriDB.unGhost(triDB.adjacentGhost(e.second, e.first)),
-					 e.first));
+  return reverse(hullAdvance(triDB, reverse(e)));
+	//  return CWEdge(Pair(TriDB.adjacent(triDB.adjacentGhost(e.second, e.first)),
+	//					 e.first));
 }
 
  CCWEdge hullReverse(const ref TriDB triDB, CCWEdge e){
-   return CCWEdge(Pair( triDB.adjacentReal(e.first, TriDB.makeGhost(e.second)),
-						e.first));
+   return reverse(hullAdvance(triDB, reverse(e)));
+   //   return CCWEdge(Pair( triDB.adjacentReal(e.first, TriDB.makeGhost(e.second)),
+   //						e.first));
 }
 
 
@@ -189,29 +192,34 @@ void makeTriFromTwoEdges(Vec)(ref TriDB triDB, int a, int b, int c, const ref Ve
   auto prev = hullReverse(triDB, CCWEdge(Pair(a, b))).first;
   auto next = hullAdvance(triDB, CCWEdge(Pair(b, c))).second;
   //delete the 3 ghost triangles that are now bad
-  triDB.deleteTriangle(Triangle(prev, a, TriDB.makeGhost(b)));
-  triDB.deleteTriangle(Triangle(a, b, TriDB.makeGhost(c)));
-  triDB.deleteTriangle(Triangle(b, c, TriDB.makeGhost(next)));
+  triDB.deleteTriangle(Triangle(b, a, TriDB.makeGhost(prev)));
+  triDB.deleteTriangle(Triangle(c, b, TriDB.makeGhost(a)));
+  triDB.deleteTriangle(Triangle(next, c, TriDB.makeGhost(b)));
   //and add the appropriate new triangles:
   triDB.addTriangle(Triangle(a, c, b), points);
-  triDB.addTriangle(Triangle(prev, a, TriDB.makeGhost(c)), points);
-  triDB.addTriangle(Triangle(a, c, TriDB.makeGhost(next)), points);
+  triDB.addTriangle(Triangle(c, a, TriDB.makeGhost(prev)), points);
+  triDB.addTriangle(Triangle(next, c, TriDB.makeGhost(a)), points);
   
 }
+
+
 
 void eraseEdge(Vec)(ref TriDB triDB, CCWEdge e, const ref Vec[] points){
   //delete the two edges:
   auto prev = hullReverse(triDB, e).first;
   auto next = hullAdvance(triDB, e).second;
+
   //the real value MUST exist if we're calling this function
-  auto newPoint = triDB.adjacentReal(e.first, e.second);
-  triDB.deleteTriangle(Triangle(prev, e.first, TriDB.makeGhost(e.second)));
-  triDB.deleteTriangle(Triangle(e.first, e.second, TriDB.makeGhost(next)));
+  auto newPoint = triDB.adjacent(e.first, e.second);
+  assert(!TriDB.isGhost(newPoint));
+  
+  triDB.deleteTriangle(Triangle(e.second, e.first, TriDB.makeGhost(prev)));
+  triDB.deleteTriangle(Triangle(next, e.second, TriDB.makeGhost(e.first)));
   triDB.deleteTriangle(Triangle(e.first, e.second, newPoint));
   //and add the 3 new ones
-  triDB.addTriangle(Triangle(prev, e.first, TriDB.makeGhost(newPoint)), points);
-  triDB.addTriangle(Triangle(e.first, newPoint,  TriDB.makeGhost(e.second)), points);
-  triDB.addTriangle(Triangle(newPoint, e.second, TriDB.makeGhost(next)), points);
+  triDB.addTriangle(Triangle(newPoint, e.first, TriDB.makeGhost(prev)), points);
+  triDB.addTriangle(Triangle(e.second, newPoint,  TriDB.makeGhost(e.first)), points);
+  triDB.addTriangle(Triangle(next, e.second, TriDB.makeGhost(newPoint)), points);
 }
 
 
@@ -229,6 +237,7 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
   
   auto yMap(int a){ return Tuple!(float, float)(points[indices[a]].y, points[indices[a]].x); }
   auto xMap(int a){ return Tuple!(float, float)(points[indices[a]].x, points[indices[a]].y);}
+
   if(indices.length == 2){
 	triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.makeGhost(indices[0])), points);
 	triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.makeGhost(indices[1])), points);
@@ -283,9 +292,9 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 	  //positively oriented, add the triangle as is
 	  triDB.addTriangle(Triangle(indices[0], indices[1], indices[2]), points);
 	  //and the appropriate ghosts
-	  triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.makeGhost(indices[2])), points);
-	  triDB.addTriangle(Triangle(indices[1], indices[2], TriDB.makeGhost(indices[0])), points);
-	  triDB.addTriangle(Triangle(indices[2], indices[0], TriDB.makeGhost(indices[1])), points);
+	  triDB.addTriangle(Triangle(indices[0], indices[2], TriDB.makeGhost(indices[1])), points);
+	  triDB.addTriangle(Triangle(indices[2], indices[1], TriDB.makeGhost(indices[0])), points);
+	  triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.makeGhost(indices[2])), points);
 
 	  static if(ByX){
 		//returning to vertical
@@ -315,9 +324,10 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 	  //	  writeln("oriented incorrectly");
 	  //negatively oriented, swap 1 and 2
 	  triDB.addTriangle(Triangle(indices[0], indices[2], indices[1]), points);
-	  triDB.addTriangle(Triangle(indices[0], indices[2], TriDB.makeGhost(indices[1])), points);
-	  triDB.addTriangle(Triangle(indices[2], indices[1], triDB.makeGhost(indices[0])), points);
-	  triDB.addTriangle(Triangle(indices[1], indices[0], triDB.makeGhost(indices[2])), points);
+	  //ghosts
+	  triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.makeGhost(indices[2])), points);
+	  triDB.addTriangle(Triangle(indices[1], indices[2], triDB.makeGhost(indices[0])), points);
+	  triDB.addTriangle(Triangle(indices[2], indices[0], triDB.makeGhost(indices[1])), points);
 
 	  static if(ByX){
 		//returning to vertical
@@ -356,6 +366,8 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 						  points[a].y > points[b].y : points[a].x < points[b].x;
 					  });
 	  }
+	  
+	  
 	  triDB.addTriangle(Triangle(indices[0], indices[1], TriDB.makeGhost(indices[2])), points);
 	  triDB.addTriangle(Triangle(indices[1], indices[0], TriDB.makeGhost(indices[1])), points);
 	  triDB.addTriangle(Triangle(indices[1], indices[2], TriDB.makeGhost(indices[1])), points);
@@ -412,19 +424,19 @@ EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWE
   auto preRdi = hullReverse(triDB, rdi).first;
   //writeln("preRdi: ", preRdi);
   //update the ghost triangle above rdi
-  triDB.deleteTriangle(Triangle(preRdi, rdi.first, TriDB.makeGhost(rdi.second)));
-  triDB.addTriangle(Triangle(preRdi, rToL.first, TriDB.makeGhost(rToL.second)), points);
+  triDB.deleteTriangle(Triangle(rdi.second, rdi.first, TriDB.makeGhost(preRdi)));
+  triDB.addTriangle(Triangle(rToL.second, rToL.first, TriDB.makeGhost(preRdi)), points);
 
   //update the ghost triangle on the ldi side
   auto preLdi = hullReverse(triDB, ldi).first;
   //  writeln("preLdi: ", preLdi);
-  triDB.deleteTriangle(Triangle(ldi.second, ldi.first, TriDB.makeGhost(preLdi)));
-  triDB.addTriangle(Triangle(ldi.second, rToL.second, TriDB.makeGhost(rToL.first)), points);
+  triDB.deleteTriangle(Triangle(preLdi, ldi.first, TriDB.makeGhost(ldi.second)));
+  triDB.addTriangle(Triangle(rToL.first, rToL.second, TriDB.makeGhost(ldi.second)), points);
 
   //go from l to r to rdi.second for the closing edge of the hull
-  triDB.addTriangle(Triangle(rToL.second, rToL.first, TriDB.makeGhost(rdi.second)), points);
+  triDB.addTriangle(Triangle(rdi.second, rToL.first, TriDB.makeGhost(rToL.second)), points);
   //and from r to l on top
-  triDB.addTriangle(Triangle(rToL.first, rToL.second, TriDB.makeGhost(preLdi)), points);
+  triDB.addTriangle(Triangle(preLdi, rToL.second, TriDB.makeGhost(rToL.first)), points);
 
   
   //are there ghost triangles that need to be removed?
@@ -438,14 +450,14 @@ EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWE
 	bool lValid = rightOf(points[lCand], points[rToL.first], points[rToL.second]);
 
 	if(lValid){
-	  int nextCand = triDB.adjacentRealIfExists(rToL.second, lCand);
+	  int nextCand = triDB.adjacent(rToL.second, lCand);
 	  //	  writeln("left nextCand, ", nextCand);
 	  while(!TriDB.isGhost(nextCand) &&
 			isInCircle(points[rToL.second], points[rToL.first], points[lCand], points[nextCand])){
 		//		writefln("erasing edge left side: %d, %d", rToL.second, lCand);
 		eraseEdge(triDB, CCWEdge(Pair(rToL.second, lCand)), points);
 		lCand = nextCand;
-		nextCand = triDB.adjacentRealIfExists(rToL.second, lCand);
+		nextCand = triDB.adjacent(rToL.second, lCand);
 		//		writeln("left nextCand, ", nextCand);
 	  }
 	}
@@ -456,7 +468,7 @@ EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWE
 	bool rValid = rightOf(points[rCand], points[rToL.first], points[rToL.second]);
 
 	if(rValid){
-	  int nextCand = triDB.adjacentRealIfExists(rCand, rToL.first);
+	  int nextCand = triDB.adjacent(rCand, rToL.first);
 	  //	  writeln("right nextCand, ", nextCand);
 	  while(!TriDB.isGhost(nextCand) &&
 			isInCircle(points[rToL.second], points[rToL.first], points[rCand], points[nextCand])){
@@ -464,7 +476,7 @@ EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWE
 		//		writefln("erasing edge right side: %d, %d", rCand, rToL.first);
 		eraseEdge(triDB, CCWEdge(Pair(rCand, rToL.first)), points);
 		rCand = nextCand;
-		nextCand = triDB.adjacentRealIfExists(rCand, rToL.first);
+		nextCand = triDB.adjacent(rCand, rToL.first);
 		//		writeln("right nextCand, ", nextCand);
 	  }
 	}
@@ -678,7 +690,7 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
   //find the triangle at s that contains the segment
   while(!segmentsCross(Segment(s1, s2),
 					   Segment(points[vw.first], points[vw.second]))){
-	int adj = triDB.adjacentReal(u, vw.second);
+	int adj = triDB.adjacent(u, vw.second);
 	vw = Pair(vw.second, adj);
   }
   //and delete it
@@ -694,7 +706,7 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
   }
 
   //it had better be real
-  auto adj = triDB.adjacentReal(vw.second, vw.first);
+  auto adj = triDB.adjacent(vw.second, vw.first);
 
   while(adj != s.second){
 	int newAdj;
@@ -707,10 +719,10 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 	  rightPoints ~= adj;
 	}
 	if(segmentsCross(Segment(s1, s2), Segment(points[vw.first], points[adj]))){
-	  newAdj = triDB.adjacentReal(adj, vw.first);
+	  newAdj = triDB.adjacent(adj, vw.first);
 	  vw = Pair(vw.first, adj);
 	} else {
-	  newAdj = triDB.adjacentReal(vw.second, adj);
+	  newAdj = triDB.adjacent(vw.second, adj);
 	  vw = Pair(adj, vw.second);
 	}
 	adj = newAdj;

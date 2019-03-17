@@ -3,7 +3,7 @@ module dtriangulate.tridb;
 public import dtriangulate.ssoVector;
 public import dtriangulate.predicates;
 
-import gl3n.linalg : vec2;
+public import gl3n.linalg : vec2;
 
 import std.stdio;
 import std.conv;
@@ -128,6 +128,21 @@ struct TriDB{
 	assert(realCount == deletedCount);
   }
 
+  int adjacent(int u, int v) const{
+	assert(!isGhost(u));
+	assert(u != v);
+	assert( !isGhost(v) || u != unGhost(v));
+	foreach(const ref pr; triangles[u]){
+	  if(pr.first == v){
+		return pr.second;
+	  }
+	}
+	assert(false);
+  }
+  
+  /*
+  These are unncessary when the ghost convention is the same as the normal convention.
+  
   int adjacentGhost(int u, int v) const{
 	assert(!isGhost(u));
 	assert(u != v);
@@ -151,31 +166,7 @@ struct TriDB{
 	
   }
 
-  bool adjacentRealExists(int u, int v) const{
-	assert(!isGhost(u));
-	assert(!isGhost(v));
-	foreach(const ref pr; triangles[u]){
-	  if(pr.first == v && !isGhost(pr.second)){
-		return true;
-	  }
-	}
-	return false;
-  }
 
-  bool anyAdjacentExists(int u, int v){
-	//	assert(!isGhost(u));
-	//	assert(!isGhost(v));
-	if(isGhost(u)){ u = unGhost(u); }
-	foreach(const ref pr; triangles[u]){
-	  if( (!isGhost(pr.first) && pr.first == v) ||
-		  (isGhost(pr.first) && unGhost(pr.first) == v)){
-		return true;
-	  }
-	}
-	return false;
-
-  }
-  
   //return the real adjacent vertex if it exists
   //otherwise returns the ghost version
   int adjacentRealIfExists(int u, int v) const{
@@ -196,6 +187,36 @@ struct TriDB{
 	assert(found);
 	return ret;
   }
+  */
+
+  //todo: should probably be deleted!
+  /*bool adjacentRealExists(int u, int v) const{
+	assert(false);
+	assert(!isGhost(u));
+	assert(!isGhost(v));
+	foreach(const ref pr; triangles[u]){
+	  if(pr.first == v && !isGhost(pr.second)){
+		return true;
+	  }
+	}
+	return false;
+	}
+  
+  bool anyAdjacentExists(int u, int v){
+	assert(false);
+	//	assert(!isGhost(u));
+	//	assert(!isGhost(v));
+	if(isGhost(u)){ u = unGhost(u); }
+	foreach(const ref pr; triangles[u]){
+	  if( (!isGhost(pr.first) && pr.first == v) ||
+		  (isGhost(pr.first) && unGhost(pr.first) == v)){
+		return true;
+	  }
+	}
+	return false;
+
+	}
+  */
   
 
 
@@ -320,11 +341,14 @@ private:
 
   SSOVector!(Pair, 9)[] triangles;
   //each elements of triangles[i] means there is a triangle i, pr.first, pr.second
-  //if one of the elements in the pair has its MSB set, it means it is a GHOST edge
-  //which and the negative value is the next vertex in a CCW ordering
+  //if one of the elements in the pair has its MSB set, it means it is a GHOST vertex
+  //That vertex is "virtual," and means that it would be the next vertex in a CW traveral of
+  //the hull.
   //for example if triangle[i] has j, GHOST(k), then i, j, and j, k are consecutive edges
-  //in a CCW ordering
+  //in a CW ordering
 
+  // Intuition:  a Ghost triangle is really 2 external edges!!
+  
 
 }
 

@@ -1,6 +1,6 @@
 module dtriangulate.predicates;
 
-import dtriangulate.apFloat;
+public import dtriangulate.apFloat;
 
 import std.traits : Unqual;
 
@@ -123,8 +123,8 @@ auto inCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec 
 auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
 
   alias FP = Unqual!(typeof(a.x));
-  
-  auto ax = AdaptiveFloat!FP(a.x);
+  alias AF1 = AdaptiveFloat!(FP, 1);
+  AF1 ax = AF1(a.x);
   auto ay = AdaptiveFloat!FP(a.y);
   auto bx = AdaptiveFloat!FP(b.x);
   auto by = AdaptiveFloat!FP(b.y);

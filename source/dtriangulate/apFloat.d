@@ -1,22 +1,13 @@
 module dtriangulate.apFloat;
 
 struct AdaptiveFloat(FP, int N = 1) if (N != 0){
+  
 private:
   static if(N == 0){
 	FP[] data;
   } else {
 	FP[N] data;
   }
-
-
-
-  /*  struct AFView(FP){
-	FP[] data;
-	this(auto ref AdaptiveFloat!FP rhs, int start, int stop){
-	  data = rhs.data[start..stop];
-	}
-	}*/
-
 
   
 public:
@@ -53,7 +44,7 @@ public:
 	  ret.data[1] = aRoundoff + bRoundoff;
 	  return ret;
 	} else static if(M ==1){
-	  auto ret = AdaptiveFloat!(FP, N + 1)(this);
+	  auto ret = expand!(N+1); //AdaptiveFloat!(FP, N + 1)(this);
 	  ret.unsafePlusEq(rhs.data[0], 0, N);
 	  return ret;
 	} else static if(N ==1){
@@ -61,7 +52,7 @@ public:
 	  ret.unsafePlusEq(data[0], 0, M);
 	  return ret;
 	} else {
-	  AdaptiveFloat!(FP, M + N) ret = AdaptiveFloat!(FP, M + N)(this);
+	  AdaptiveFloat!(FP, M + N) ret = expand!(M+N); //AdaptiveFloat!(FP, M + N)(this);
 	  foreach(i; 0..M){
 		ret.unsafePlusEq(rhs.data[M - i - 1], i, N);
 	  }
@@ -81,7 +72,7 @@ public:
 	  ret.data[1] = aRoundoff + bRoundoff;
 	  return ret;
 	} else static if(M == 1){
-	  auto ret = AdaptiveFloat!(FP, N + 1)(this);
+	  auto ret = expand!(N+1); //AdaptiveFloat!(FP, N + 1)(this);
 	  ret.unsafeMinusEq(rhs.data[0], 0, N);
 	  return ret;
 	} else static if(N == 1){
@@ -89,7 +80,7 @@ public:
 	  ret.unsafeMinusEq(data[0], 0, M);
 	  return ret;
 	} else {
-	  auto ret = AdaptiveFloat!(FP, M + N)(this);
+	  auto ret = expand!(M+N);//AdaptiveFloat!(FP, M + N)(this);
 	  foreach(i; 0..M){
 		ret.unsafeMinusEq(rhs.data[M - i - 1], i, N);
 	  }
@@ -141,8 +132,7 @@ public:
 		return rhs*this;
 	  } else {
 		//N <= M
-
-		AdaptiveFloat!(FP, 2*M*N) ret = rhs*AdaptiveFloat!FP(data[0]);
+		AdaptiveFloat!(FP, 2*M*N) ret = (rhs*AdaptiveFloat!FP(data[0])).expand!(2*M*N);
 
 		foreach(i; 1..N){
 		  auto partialProduct = rhs*AdaptiveFloat!FP(data[i]); //N = 2*M
@@ -177,14 +167,25 @@ public:
   
 private:
 
-  this(int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(M <= N){
+  AdaptiveFloat!(FP, M) expand(int M)() if(M > 1 && M >= N){
+	AdaptiveFloat!(FP, M) ret;
+	foreach(i; 0..N){
+	  ret.data[M - i - 1] = data[N - i - 1];
+	}
+	foreach(i; 0..(M - N)){
+	  ret.data[i] = 0;
+	}
+	return ret;
+  }
+  /*
+  this(int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(M > 1 && M <= N){
 	foreach(i; 0..M){
 	  data[N - i - 1] = rhs.data[M - i - 1];
 	}
 	foreach(i; 0..(N - M)){
 	  data[i] = 0;
 	}
-  }
+	}*/
   
   void unsafePlusEq(FP f, int first, int len){
 	//import std.stdio;
