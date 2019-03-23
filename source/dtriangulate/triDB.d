@@ -139,6 +139,18 @@ struct TriDB{
 	}
 	assert(false);
   }
+
+  bool adjacentExists(int u, int v) const{
+	assert(!isGhost(u));
+	assert(u != v);
+	assert( !isGhost(v) || u != unGhost(v));
+	foreach(const ref pr; triangles[u]){
+	  if(pr.first == v){
+		return true;
+	  }
+	}
+	return false;
+  }
   
   /*
   These are unncessary when the ghost convention is the same as the normal convention.

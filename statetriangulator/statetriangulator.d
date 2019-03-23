@@ -96,11 +96,10 @@ int main(string[] args){
   writeSVG(svgFileConstrained, points, triDB);
 
 
-  /*cutOffScraps(points, triDB, segments);
-
+  cutOffScraps(points, triDB, segments);
+  
   string svgFileTrimmed = to!string(svgFile[0..$-4] ~ "trimmed.svg");
   writeSVG(svgFileTrimmed, points, triDB);
-  */
   
   /*  
   foreach(i; 0..points.length){

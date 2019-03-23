@@ -648,9 +648,31 @@ void cutOffScraps(Vec)(const Vec[] points, ref TriDB triDB, const Pair[] segment
 	  auto v = tri[i];
 	  auto w = tri[i+1];
 
-	  if( !((Pair(v, w) in segmentSet ) || (Pair(w, v) in segmentSet)) ){
-		if(triDB.anyAdjacentExists(w, v)){
-		  toDelete ~= Triangle(w, v, triDB.adjacentRealIfExists(w, v));
+	  
+	  if((Pair(v, w) in segmentSet ) || (Pair(w, v) in segmentSet) ){
+		continue;
+	  } //don't cross real edges.  if either is a ghost, we DO want to delete those triangles
+
+	  //3 cases depending on which if any of the 3 vertices is a ghost (at most 1 can be)
+	  if(TriDB.isGhost(v)){
+		//delete the ghost triangle in the CCW direction of us, if it exists
+		
+		auto x = tri[i+2];
+		if(triDB.adjacentExists(w, TriDB.makeGhost(x)) ){
+		  auto prev = triDB.adjacent(w, TriDB.makeGhost(x));
+		  toDelete ~= Triangle(prev, w, triDB.makeGhost(x));
+		}
+
+
+
+	  } else if(TriDB.isGhost(w)){
+		//delete the ghost triangle in the CW direction of us, if it exists
+		if(triDB.adjacentExists(v, TriDB.unGhost(w)) ){
+			toDelete ~= Triangle(v, TriDB.unGhost(w), triDB.adjacent(v, TriDB.unGhost(w)));
+		  }
+	  } else { //all reals, easy case
+		if(triDB.adjacentExists(w, v)){
+		  toDelete ~= Triangle(w, v, triDB.adjacent(w, v));
 		}
 	  }
 	}
@@ -737,9 +759,9 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 
 void cavityInsertVertex(Vec)(const Vec[] points, ref TriDB triDB, int[] poly, int u, int v, int w){
 
-  if(triDB.adjacentRealExists(w,v)){
+  if(triDB.adjacentExists(w,v)){
 
-	auto x = triDB.adjacentReal(w, v);
+	auto x = triDB.adjacent(w, v);
 	if(orient2D(points[poly[u]], points[poly[v]], points[poly[w]]) > 0 &&
 	   !inCircle(points[poly[u]], points[poly[v]], points[poly[w]], points[poly[x]])){
 	  //uvw is constrained delaunay because the point on the other side is far enough away
