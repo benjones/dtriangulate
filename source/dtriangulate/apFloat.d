@@ -1,5 +1,8 @@
 module dtriangulate.apFloat;
 
+//adaptive precision floating point number
+//based on the shewchuck paper
+
 struct AdaptiveFloat(FP, int N = 1) if (N != 0){
   
 private:
@@ -40,7 +43,7 @@ public:
 	  ret.data[1] = aRoundoff + bRoundoff;
 	  return ret;
 	} else static if(M ==1){
-	  auto ret = expand!(N+1); //AdaptiveFloat!(FP, N + 1)(this);
+	  auto ret = expand!(N+1); 
 	  ret.unsafePlusEq(rhs.data[0], 0, N);
 	  return ret;
 	} else static if(N ==1){
@@ -48,7 +51,7 @@ public:
 	  ret.unsafePlusEq(data[0], 0, M);
 	  return ret;
 	} else {
-	  AdaptiveFloat!(FP, M + N) ret = expand!(M+N); //AdaptiveFloat!(FP, M + N)(this);
+	  AdaptiveFloat!(FP, M + N) ret = expand!(M+N);
 	  foreach(i; 0..M){
 		ret.unsafePlusEq(rhs.data[M - i - 1], i, N);
 	  }
@@ -173,19 +176,8 @@ private:
 	}
 	return ret;
   }
-  /*
-  this(int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(M > 1 && M <= N){
-	foreach(i; 0..M){
-	  data[N - i - 1] = rhs.data[M - i - 1];
-	}
-	foreach(i; 0..(N - M)){
-	  data[i] = 0;
-	}
-	}*/
   
   void unsafePlusEq(FP f, int first, int len){
-	//import std.stdio;
-	//writefln("unsafe peq, before, %f, %d, %d, %s", f, first, len, this);
 	auto q = AdaptiveFloat!FP(f);
 	foreach(i; first..(first + len)){
 	  auto t1 = AdaptiveFloat!FP(data[N - i - 1]);
@@ -194,7 +186,6 @@ private:
 	  data[N - i - 1] = temp.data[1];
 	}
 	data[N - first - len -1] = q.data[0];
-	//writefln("after: %s", this);
   }
 
   void unsafeMinusEq(FP f, int first, int len){
@@ -216,17 +207,6 @@ private:
 	  return ret;
 	}
   }
-  /*  static if(N > 1){
-	AdaptiveFloat!(FP, N -1) dropLast(){
-	  import std.conv;
-	  pragma(msg, "dropLast with N = " ~ to!string(N));
-	  AdaptiveFloat!(FP, N -1) ret;
-	  foreach(i ; 0..(N -1)){
-		ret.data[i] = data[i];
-	  }
-	  return ret;
-	}
-	}*/
   
 }
 
@@ -255,7 +235,6 @@ unittest{
   //multiplication
   AdaptiveFloat!(float,1) a = 1;
   auto eps = AdaptiveFloat!float( float.epsilon/2);
-  //writeln("eps " ~ to!string(eps));
   auto b = a + eps;
   //writeln("b " ~ to!string(b));
   auto c = a * b; //1 + eps   (1)*(2)

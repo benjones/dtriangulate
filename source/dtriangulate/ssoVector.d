@@ -44,8 +44,6 @@ public:
 
 
 unittest {
-  import std.stdio;
-  writeln("SSO UnitTests");
   SSOVector!(int, 4) i4;
 
   assert(i4.length == 0);
@@ -72,7 +70,6 @@ unittest {
   assert(i4.back == 16);
 
 
-  writeln("last test");
   SSOVector!(int, 5) i5;
   foreach(i; 0..10){
 	i5 ~= 1;

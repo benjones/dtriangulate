@@ -153,7 +153,6 @@ auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto
 
   //256
   auto aCofactor = aLift*(bxcy - bycx);
-  pragma(msg, typeof(aCofactor));
   
   auto axcy = adx*cdy;
   auto aycx = ady*cdx;
@@ -162,11 +161,8 @@ auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto
   auto axby = adx*bdy;
   auto aybx = ady*bdx;
   auto cCofactor = cLift*(axby - aybx);
-  pragma(msg, typeof(cCofactor));
 	
   //too many components
-  pragma(msg, typeof(aCofactor + bCofactor));
-  pragma(msg, typeof(aCofactor + bCofactor + cCofactor));
   return (aCofactor + bCofactor + cCofactor).asReal();
   
 }
@@ -348,8 +344,6 @@ unittest{
   assert(closer(p1, p0, t) == 0);
   
 
-  import std.stdio;
-  writeln("closer tests successful");
   
   
 }
