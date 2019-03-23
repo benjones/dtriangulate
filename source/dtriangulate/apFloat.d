@@ -3,11 +3,7 @@ module dtriangulate.apFloat;
 struct AdaptiveFloat(FP, int N = 1) if (N != 0){
   
 private:
-  static if(N == 0){
-	FP[] data;
-  } else {
 	FP[N] data;
-  }
 
   
 public:
