@@ -67,6 +67,39 @@ struct Triangle{
   private int[3] v;
 }
 
+auto minAngleDegrees(Vec)(Triangle tri, const ref Vec[] points){
+  import std.traits : Unqual;
+  import std.math: acos, PI;
+  import std.algorithm: clamp;
+  
+  alias FP = Unqual!(typeof(points[0].x));
+  FP ret = 180;
+  foreach(i; 0..3){
+	auto a = points[tri[i]];
+	auto b = points[tri[i+1]];
+	auto c = points[tri[i+2]];
+
+	auto ab = b - a;
+	auto ac = c - a;
+
+	//times is dot product for gl3n, hopefully other libs?
+	auto angle = acos(clamp(ab*ac/(ab.magnitude*ac.magnitude) , 0, 1));
+	ret = min(ret, angle);
+  }
+  return ret*180/PI;
+  
+}
+
+auto area(Vec)(Triangle tri, const ref Vec[] points){
+  import std.traits : Unqual;
+  alias FP = Unqual!(typeof(points[0].x));
+  auto a = points[tri[0]];
+  auto b = points[tri[1]];
+  auto c = points[tri[2]];
+  return FP(0.5)*( (b.x-a.x)*(c.y-a.y)- (c.x-a.x)*(b.y -a.y));
+
+}
+
 
 struct TriDB{
 
@@ -95,7 +128,6 @@ struct TriDB{
 
   
   void addTriangle(Vec)(Triangle t, const ref Vec[] points){
-	//writeln("adding: ", t);
 	if(!isGhost(t[0]) && !isGhost(t[1]) && !isGhost(t[2])){
 	  assert(orient2D(points[t[0]], points[t[1]], points[t[2]]) > 0);
 	}
@@ -107,7 +139,6 @@ struct TriDB{
   }
   
   void deleteTriangle(Triangle t){
-	//writeln("deleting: ", t);
 	int deletedCount = 0;
 	int realCount = 0;
 	foreach(i; 0..3){
@@ -151,86 +182,6 @@ struct TriDB{
 	}
 	return false;
   }
-  
-  /*
-  These are unncessary when the ghost convention is the same as the normal convention.
-  
-  int adjacentGhost(int u, int v) const{
-	assert(!isGhost(u));
-	assert(u != v);
-	foreach(const ref pr; triangles[u]){
-	  if(pr.first ==v && isGhost(pr.second)){
-		return pr.second;
-	  }
-	}
-	assert(false);
-	
-  }
-  int adjacentReal(int u, int v) const{
-	assert(!isGhost(u));
-	assert(u != v);
-	foreach(const ref pr; triangles[u]){
-	  if(pr.first ==v && !isGhost(pr.second)){
-		return pr.second;
-	  }
-	}
-	assert(false);
-	
-  }
-
-
-  //return the real adjacent vertex if it exists
-  //otherwise returns the ghost version
-  int adjacentRealIfExists(int u, int v) const{
-	assert(!isGhost(u));
-	assert(u != v);
-	int ret;
-	bool found;
-	foreach(const ref pr; triangles[u]){
-	  if(pr.first ==v){
-		if(!isGhost(pr.second)){
-		  return pr.second;
-		} else {
-		  ret = pr.second;
-		  found = true;
-		}
-	  }
-	}
-	assert(found);
-	return ret;
-  }
-  */
-
-  //todo: should probably be deleted!
-  /*bool adjacentRealExists(int u, int v) const{
-	assert(false);
-	assert(!isGhost(u));
-	assert(!isGhost(v));
-	foreach(const ref pr; triangles[u]){
-	  if(pr.first == v && !isGhost(pr.second)){
-		return true;
-	  }
-	}
-	return false;
-	}
-  
-  bool anyAdjacentExists(int u, int v){
-	assert(false);
-	//	assert(!isGhost(u));
-	//	assert(!isGhost(v));
-	if(isGhost(u)){ u = unGhost(u); }
-	foreach(const ref pr; triangles[u]){
-	  if( (!isGhost(pr.first) && pr.first == v) ||
-		  (isGhost(pr.first) && unGhost(pr.first) == v)){
-		return true;
-	  }
-	}
-	return false;
-
-	}
-  */
-  
-
 
   bool edgeExists(int u, int v) const{
 	assert(!isGhost(u));
@@ -258,7 +209,9 @@ struct TriDB{
   Pair[] getTriangles(int i) const{
 	return triangles[i].dup();
   }
-  
+
+
+  //todo, return a range instead of allocating an array  
   Triangle[] getTriangles() const{
 	Triangle[] ret;
 	foreach(size_t i, const ref svec; triangles){
@@ -347,6 +300,11 @@ struct TriDB{
 	} else {
 	  return triangles[tri[1]].canFind(Pair(tri[2], tri[0]));
 	}
+  }
+
+  //add a steiner point connected to no triangles
+  void addPoint(){
+	triangles ~= typeof(triangles[0])();
   }
   
 private:

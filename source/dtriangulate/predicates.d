@@ -358,3 +358,73 @@ bool segmentsCross(Segment)(auto ref Segment a, auto ref Segment b){
   return bCrossesA && aCrossesB;
 
 }
+
+
+
+
+// note, we probably don't actually need this to be done with arbitrary precision
+//worst case we either split/don't split a segment that's almost encroached
+bool pointInDiametricCircle(Segment, Vec)( Segment s,  Vec p){
+
+  alias FP = Unqual!(typeof(p.x));
+  Vec midpoint = 0.5*(s.first + s.second);
+
+  auto x1 = s.first.x - midpoint.x;
+  auto x2 = s.first.y - midpoint.y;
+  auto x3 = p.x - midpoint.x;
+  auto x4 = p.y - midpoint.y;
+  auto x5 = x1*x1;
+  auto x6 = x2*x2;
+  auto x7 = x3*x3;
+  auto x8 = x4*x4;
+  auto x9 = x5 + x6; //||a - m||^2
+  auto x10 = x7 + x8; // ||p - m||^2
+  auto x11 = x9 - x10; // if < 0, a is closer to m than p, meaning p is outside the circle
+
+
+  enum FP tolFactor =
+	3*FP.epsilon + 3*FP.epsilon*FP.epsilon + FP.epsilon*FP.epsilon*FP.epsilon;
+  
+  import std.math : abs;	  
+  auto errorBound = FP.epsilon*(abs(x11) + abs(x10) + abs(x9)) +
+	tolFactor*(abs(x5) + abs(x6) + abs(x7) + abs(x8));
+  
+  if(abs(x11) > errorBound){
+	return x11 > 0;
+  } else {
+	//do adaptive
+	return pointInDiametricCircleAdaptive(s.first, midpoint, p);
+  }
+
+}
+
+
+bool pointInDiametricCircleAdaptive(Vec)(Vec a,  Vec midpoint,  Vec p){
+
+  import std.stdio;
+  writeln("using adaptive diametric circle");
+
+  alias FP = Unqual!(typeof(a.x));
+  
+  auto ax = AdaptiveFloat!FP(a.x);
+  auto ay = AdaptiveFloat!FP(a.y);
+  auto mx = AdaptiveFloat!FP(midpoint.x);
+  auto my = AdaptiveFloat!FP(midpoint.y);
+  auto px = AdaptiveFloat!FP(p.x);
+  auto py = AdaptiveFloat!FP(p.y);
+
+  auto x1 = ax - mx;
+  auto x2 = ay - my;
+  auto x3 = px - mx;
+  auto x4 = py - my;
+  auto x5 = x1*x1;
+  auto x6 = x2*x2;
+  auto x7 = x3*x3;
+  auto x8 = x4*x4;
+  auto x9 = x5 + x6;
+  auto x10 = x7 + x8;
+  auto x11 = x9 - x10;
+  
+  return x11.asReal() > 0;
+  
+}

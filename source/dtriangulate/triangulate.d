@@ -618,21 +618,16 @@ TriDB delaunayTriangulate(Vec)(const Vec[] points){
 }
 
 
-void makeConstrainedDelaunay(Vec)(const Vec[] points, ref TriDB triDB, const Pair[] segments){
-  foreach(seg; segments){
+void makeConstrainedDelaunay(Vec)(const Vec[] points, ref TriDB triDB, bool[Pair] segmentSet){
+  foreach(seg; segmentSet.byKey){
 	if(!triDB.edgeExists(seg.first, seg.second)){
 	  addSegment(points, triDB, seg);
 	}
   }
 }
 
-void cutOffScraps(Vec)(const Vec[] points, ref TriDB triDB, const Pair[] segments){
+void cutOffScraps(Vec)(const Vec[] points, ref TriDB triDB, bool[Pair] segmentSet){
 
-  bool[Pair] segmentSet;
-  foreach(seg; segments){
-	segmentSet[seg] = true;
-  }
-  
   
   auto outsideEdge = triDB.findOutsideEdge();
   Triangle[] toDelete = [ outsideEdge];
@@ -676,7 +671,6 @@ void cutOffScraps(Vec)(const Vec[] points, ref TriDB triDB, const Pair[] segment
 		}
 	  }
 	}
-	writeln("deleting ", tri);
 	triDB.deleteTriangle(tri);
 	
   }
@@ -825,6 +819,177 @@ void fillCavity(Vec)(const Vec[] points, ref TriDB triDB, int[] poly){
   triDB.addTriangulatedPolygon(triDB, poly);
 }
 
+bool isEncroached(Vec)(const ref Vec[] points, const ref TriDB triDB, Pair segment){
+  struct Segment{ Vec first, second; }
+  //is the point on either side of the segment inside the diametrical circle of this segment?
+  writeln("encroachment check for ", segment, ", edge: ", points[segment.first], ", ", points[segment.second]);
+  if(triDB.adjacentExists(segment.first, segment.second)){
+	if(pointInDiametricCircle(Segment(points[segment.first], points[segment.second]),
+							  points[triDB.adjacent(segment.first, segment.second)])){
+	  return true;
+	}
+  }
+  if(triDB.adjacentExists(segment.second, segment.first)){
+	if(pointInDiametricCircle(Segment(points[segment.second], points[segment.first]),
+							  points[triDB.adjacent(segment.second, segment.first)])){
+	  return true;
+	}
+  }
+  return false;
+
+  
+}
+
+
+//returns true if things changed
+bool refinementStep(Vec)(ref Vec[] points, ref TriDB triDB,  ref bool[Pair] segmentSet,
+						 float minSegmentLength, float minAngleDegrees_, float maxArea){
+
+  import std.algorithm;
+  import std.array;
+  import std.container.binaryheap;
+  
+  auto encroachedSegments = segmentSet.byKey.filter!((seg) => isEncroached(points, triDB, seg)).array;
+
+  auto encroachedTriangles = triDB.getTriangles.filter!((tri) =>
+														minAngleDegrees(tri, points) < minAngleDegrees_ ||
+														area(tri, points) > maxArea).array;
+
+  if(encroachedSegments.empty && encroachedTriangles.empty){
+	return false; //early out
+  }
+  
+  auto segmentHeap = heapify!((a, b) =>
+							  (points[a.first] - points[a.second]).magnitude <
+							  (points[b.first] - points[b.second]).magnitude
+							  )(encroachedSegments);
+
+  auto triangleHeap = heapify!( (a, b) =>
+								minAngleDegrees(a, points) < minAngleDegrees(b, points)
+								)(encroachedTriangles);
+  
+  bool modifiedMesh = false;
+
+  writeln("encroached segs: ", segmentHeap.length, " enrcoached tris: ", triangleHeap.length);
+  writeln(encroachedSegments);
+
+  
+  while(!segmentHeap.empty || !triangleHeap.empty){
+	//prefer to split based on segments first
+	if(!segmentHeap.empty){
+	  auto s = segmentHeap.front;
+	  segmentHeap.popFront;
+
+	  //don't shrink too small
+	  if( (points[s.first] - points[s.second]).magnitude < 2*minSegmentLength){
+		continue;
+	  }
+
+	  auto newIndex = boyerWatsonSplitEdge(points, triDB, segmentSet, s);
+	  modifiedMesh = true;
+
+	  if(isEncroached(points, triDB, Pair(s.first, newIndex))){
+		segmentHeap.insert(Pair(s.first, newIndex));
+	  }
+
+	  if(isEncroached(points, triDB, Pair(newIndex, s.second))){
+		segmentHeap.insert(Pair(newIndex, s.second));
+	  }
+
+	  
+	} else { //split a big or bad triangle
+	  triangleHeap.popFront;
+	}
+	
+	
+  }
+
+  return modifiedMesh;
+}
+
+
+int boyerWatsonSplitEdge(Vec)(ref Vec[] points, ref TriDB triDB, ref bool[Pair] segmentSet, Pair s){
+
+  import std.stdio;
+  writeln("spltting ", s);
+  int newIndex = to!int(points.length);
+  Vec midpoint = 0.5*(points[s.first] + points[s.second]);
+  points ~= midpoint;
+
+  writeln("triangles before: ", triDB.getTriangles().length);
+  triDB.addPoint();
+  writeln("triangles after add point : ", triDB.getTriangles().length);
+
+
+  
+  segmentSet.remove(s);
+  segmentSet[Pair(s.first, newIndex)] = true;
+  segmentSet[Pair(newIndex, s.second)] = true;
+
+  Triangle[] triangleStack;
+
+  if(triDB.adjacentExists(s.first, s.second)){
+	triangleStack ~= Triangle(s.first, s.second, triDB.adjacent(s.first, s.second));
+	writeln("pushed ", triangleStack.back());
+  }
+
+  if(triDB.adjacentExists(s.second, s.first)){
+	triangleStack ~= Triangle(s.second, s.first, triDB.adjacent(s.second, s.first));
+	writeln("pushed ", triangleStack.back());
+  }
+
+  bool[Pair] cavitySegments;
+
+  while(!triangleStack.empty()){
+
+	Triangle tri = triangleStack.back;
+	triangleStack.popBack();
+
+	if(!triDB.adjacentExists(tri[0], tri[1])){
+	  continue;
+	}
+
+	//if this triangle has midpoint in its circumcircle, remove it and
+	//fill the hole eventually
+	if(isInCircle(points[tri[0]], points[tri[1]], points[tri[2]], midpoint)){
+	  //triangle is not constrained delaunay
+	  foreach(i; 0..3){
+		//we need the edges of the cavity.  Add them the first time they're seen
+		//remove them the second (triangles on both sides deleted, so edge isn't on the border)
+		auto e = Pair(tri[i], tri[i+1]);
+		auto eReverse = Pair(e.second, e.first);
+		//don't step across segments
+		if( (e in segmentSet) || (eReverse in segmentSet) ){
+		  continue;
+		}
+
+		if(eReverse in cavitySegments){
+		  cavitySegments.remove(eReverse);
+		} else {
+		  cavitySegments[e] = true;
+		}
+
+		if(triDB.adjacentExists(e.second, e.first)){
+		  triangleStack ~= Triangle(e.second, e.first, triDB.adjacent(e.second, e.first));
+		  writeln("pushed ", triangleStack.back());
+		}
+	  }
+	  writeln("deleting ", tri);
+	  triDB.deleteTriangle(tri);
+	}
+  }
+
+  cavitySegments.remove(s);
+  cavitySegments.remove(Pair(s.second, s.first));
+
+  writeln("cavity segments size: ", cavitySegments.length);
+  foreach(const ref cs; cavitySegments.byKey){
+	triDB.addTriangle(Triangle(cs.first, cs.second, newIndex), points);
+  }
+
+  return newIndex;
+}
+
 
 
 //write the header and return points scaled appropriately
@@ -961,6 +1126,9 @@ void writeHulls(Vec)(string filename, const Vec[] points, const ref TriDB triDB)
   writefln("hulls this frame: %d" , color);
   f.writeln("</g>\n</svg>");
 }
+
+
+
 
 
 

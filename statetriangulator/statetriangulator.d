@@ -66,6 +66,8 @@ int main(string[] args){
 	points = points[0..$-1]; 
   }
 
+  //  points ~= 0.5*(points[259] + points[260]);
+  
   /*
   import std.algorithm.searching : findAdjacent;
   vec2[] rng = points[];
@@ -76,8 +78,8 @@ int main(string[] args){
 	}*/
   writeln("number of unique points: ", points.length);
   //points = points[0..282];
-  foreach( ref p; points){
-	writef("vec2(%0.12f, %0.12f), ", p.x, p.y);
+  foreach( i, ref p; points){
+	writefln("%d: vec2(%0.12f, %0.12f) ", i, p.x, p.y);
   }
 
   
@@ -90,16 +92,31 @@ int main(string[] args){
 
   auto segments = iota(points.length).map!(i => Pair(to!int(i), to!int((i + 1)%points.length))).array;
   //make constrained delaunay next
-  makeConstrainedDelaunay(points, triDB, segments);
+  
+  bool[Pair] segmentSet;
+  foreach(seg; segments){
+	segmentSet[seg] = true;
+  }
+
+  //  segmentSet.remove(Pair(259,260));
+  //  segmentSet[Pair(259, 282)] = true;
+  //  segmentSet[Pair(282, 260)] = true;
+  
+  makeConstrainedDelaunay(points, triDB, segmentSet);
 
   string svgFileConstrained = to!string(svgFile[0..$-4] ~ "constrained.svg");
   writeSVG(svgFileConstrained, points, triDB);
 
 
-  cutOffScraps(points, triDB, segments);
+  cutOffScraps(points, triDB, segmentSet);
   
   string svgFileTrimmed = to!string(svgFile[0..$-4] ~ "trimmed.svg");
   writeSVG(svgFileTrimmed, points, triDB);
+
+  refinementStep(points, triDB, segmentSet, .1, 30, .5);
+  string svgFileRefined = to!string(svgFile[0..$-4] ~ "refined.svg");
+  writeSVG(svgFileRefined, points, triDB);
+  
   
   /*  
   foreach(i; 0..points.length){

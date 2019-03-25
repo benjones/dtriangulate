@@ -19,16 +19,13 @@ public:
   }
   
   void opOpAssign(string op)(auto ref T t) if(op == "~"){
-	//	import std.stdio;
 	T* dataPtr = cast(T*)localStorage.ptr;
 	if(data.length == 0 || (dataPtr == data.ptr && data.length < N)){
 	  //use the built in array
 	  data = dataPtr[0..(data.length + 1)];
 	  data[$-1] = t;
-	  //	  writeln("using local append, ", data.ptr);
 	} else {
 	  data ~= t;
-	  //	  writeln("using slice append, ", data.ptr);
 	}
   }
 
