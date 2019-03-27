@@ -822,7 +822,6 @@ void fillCavity(Vec)(const Vec[] points, ref TriDB triDB, int[] poly){
 bool isEncroached(Vec)(const ref Vec[] points, const ref TriDB triDB, Pair segment){
   struct Segment{ Vec first, second; }
   //is the point on either side of the segment inside the diametrical circle of this segment?
-  writeln("encroachment check for ", segment, ", edge: ", points[segment.first], ", ", points[segment.second]);
   if(triDB.adjacentExists(segment.first, segment.second)){
 	if(pointInDiametricCircle(Segment(points[segment.first], points[segment.second]),
 							  points[triDB.adjacent(segment.first, segment.second)])){
@@ -842,8 +841,8 @@ bool isEncroached(Vec)(const ref Vec[] points, const ref TriDB triDB, Pair segme
 
 
 //returns true if things changed
-bool refinementStep(Vec)(ref Vec[] points, ref TriDB triDB,  ref bool[Pair] segmentSet,
-						 float minSegmentLength, float minAngleDegrees_, float maxArea){
+bool refinementStep(Vec, FP)(ref Vec[] points, ref TriDB triDB,  ref bool[Pair] segmentSet,
+						 FP minSegmentLength, FP minAngleDegrees_, FP maxArea){
 
   import std.algorithm;
   import std.array;
@@ -864,15 +863,14 @@ bool refinementStep(Vec)(ref Vec[] points, ref TriDB triDB,  ref bool[Pair] segm
 							  (points[b.first] - points[b.second]).magnitude
 							  )(encroachedSegments);
 
+  //max heap, compare greater by min angle so the max heap pulls the smallest angle triangle first
   auto triangleHeap = heapify!( (a, b) =>
-								minAngleDegrees(a, points) < minAngleDegrees(b, points)
+								minAngleDegrees(a, points) > minAngleDegrees(b, points)
 								)(encroachedTriangles);
   
   bool modifiedMesh = false;
 
   writeln("encroached segs: ", segmentHeap.length, " enrcoached tris: ", triangleHeap.length);
-  writeln(encroachedSegments);
-
   
   while(!segmentHeap.empty || !triangleHeap.empty){
 	//prefer to split based on segments first
@@ -898,7 +896,18 @@ bool refinementStep(Vec)(ref Vec[] points, ref TriDB triDB,  ref bool[Pair] segm
 
 	  
 	} else { //split a big or bad triangle
+	  auto tri = triangleHeap.front;
 	  triangleHeap.popFront;
+
+	  if(triDB.containsTriangle(tri)){
+		auto newIndex = boyerWatsonSplitTriangle(points, triDB, segmentSet,
+												 segmentHeap, tri,
+												 minSegmentLength, minAngleDegrees_, maxArea);
+		if(!TriDB.isGhost(newIndex)){
+		  modifiedMesh = true;
+		}
+		
+	  }
 	}
 	
 	
@@ -909,17 +918,14 @@ bool refinementStep(Vec)(ref Vec[] points, ref TriDB triDB,  ref bool[Pair] segm
 
 
 int boyerWatsonSplitEdge(Vec)(ref Vec[] points, ref TriDB triDB, ref bool[Pair] segmentSet, Pair s){
-
+  
   import std.stdio;
   writeln("spltting ", s);
   int newIndex = to!int(points.length);
   Vec midpoint = 0.5*(points[s.first] + points[s.second]);
   points ~= midpoint;
 
-  writeln("triangles before: ", triDB.getTriangles().length);
   triDB.addPoint();
-  writeln("triangles after add point : ", triDB.getTriangles().length);
-
 
   
   segmentSet.remove(s);
@@ -930,12 +936,10 @@ int boyerWatsonSplitEdge(Vec)(ref Vec[] points, ref TriDB triDB, ref bool[Pair] 
 
   if(triDB.adjacentExists(s.first, s.second)){
 	triangleStack ~= Triangle(s.first, s.second, triDB.adjacent(s.first, s.second));
-	writeln("pushed ", triangleStack.back());
   }
 
   if(triDB.adjacentExists(s.second, s.first)){
 	triangleStack ~= Triangle(s.second, s.first, triDB.adjacent(s.second, s.first));
-	writeln("pushed ", triangleStack.back());
   }
 
   bool[Pair] cavitySegments;
@@ -960,6 +964,7 @@ int boyerWatsonSplitEdge(Vec)(ref Vec[] points, ref TriDB triDB, ref bool[Pair] 
 		auto eReverse = Pair(e.second, e.first);
 		//don't step across segments
 		if( (e in segmentSet) || (eReverse in segmentSet) ){
+		  cavitySegments[e] = true; //triangulate this edge
 		  continue;
 		}
 
@@ -971,24 +976,128 @@ int boyerWatsonSplitEdge(Vec)(ref Vec[] points, ref TriDB triDB, ref bool[Pair] 
 
 		if(triDB.adjacentExists(e.second, e.first)){
 		  triangleStack ~= Triangle(e.second, e.first, triDB.adjacent(e.second, e.first));
-		  writeln("pushed ", triangleStack.back());
 		}
 	  }
-	  writeln("deleting ", tri);
 	  triDB.deleteTriangle(tri);
 	}
+
   }
 
   cavitySegments.remove(s);
   cavitySegments.remove(Pair(s.second, s.first));
 
-  writeln("cavity segments size: ", cavitySegments.length);
   foreach(const ref cs; cavitySegments.byKey){
 	triDB.addTriangle(Triangle(cs.first, cs.second, newIndex), points);
   }
-
   return newIndex;
 }
+
+
+int boyerWatsonSplitTriangle(Vec, Heap, FP)(ref Vec[] points, ref TriDB triDB, ref bool[Pair] segmentSet,
+											ref Heap segmentHeap, Triangle triToSplit,
+											FP minSegmentLength, FP minAngleDegrees, FP maxArea){
+
+  struct Segment{Vec first, second;}
+
+  import std.stdio;
+  writeln("splitting ", triToSplit);
+
+  
+  Vec circumcenter = getCircumcenter(triToSplit, points);
+  if(!circumcenter.isFinite()){
+	return TriDB.makeGhost(1);
+  }
+
+  bool pointInTriangle = false;
+
+  bool[Triangle] toDelete;
+  bool[Pair] cavityEdges;
+  Pair[] encroachedSegments;
+
+
+  //clear out the cavity
+  Triangle[] triangleStack = [triToSplit];
+  while(!triangleStack.empty()){
+
+	Triangle tri = canonical(triangleStack.back);
+	triangleStack.popBack();
+
+	if(tri in toDelete){ //already deleted
+	  continue;
+	}
+
+	//point makes triangle non-delaunay
+	if(isInCircle(points[tri[0]], points[tri[1]], points[tri[2]], circumcenter)){
+
+	  //have we found a triangle that contains the cirumcenter yet?
+	  //idaelly it's the triToSplit itself
+	  if(inside(tri, points, circumcenter)){
+		pointInTriangle = true;
+	  }
+
+	  foreach(i; 0..3){
+
+		auto u = tri[i];
+		auto v = tri[i+1];
+		auto e = Pair(u,v);
+		auto eReverse = Pair(v, u);
+
+		//is this edge a segment
+		if( (e in segmentSet) || (eReverse in segmentSet) ) {
+		  if(pointInDiametricCircle(Segment(points[e.first], points[e.second]), circumcenter)){
+			//add this to encroached segments
+			encroachedSegments ~= (e in segmentSet) ? e : eReverse;
+		  }
+		  
+		} else {
+		  //cross the segment
+		  auto other = triDB.adjacent(v, u);
+		  auto neighbor = canonical(Triangle(v, u, other));
+		  if(! (neighbor in toDelete)){
+			triangleStack ~= neighbor;
+		  }
+		}
+
+		//add or remove this from cavity edges so we know what to fill
+		//TODO, probably only one of these can happen)
+		if( (e in cavityEdges) || (eReverse in cavityEdges)){
+		  cavityEdges.remove(e);
+		  cavityEdges.remove(eReverse);
+		} else {
+		  cavityEdges[e] = true;
+		}
+		
+		
+	  }
+	  toDelete[tri] = true;
+	}
+  }
+
+  if(!encroachedSegments.empty){
+	//don't split the triangle, split the segments
+	foreach(seg; encroachedSegments){
+	  segmentHeap.insert(seg);
+	}
+	return TriDB.makeGhost(1);
+  } else if(!pointInTriangle){
+	writeln("split triangle, no encroached segments, but circumcenter outside searched triangles");
+	return TriDB.makeGhost(1);
+  } else {
+	foreach(t; toDelete.byKey()){
+	  triDB.deleteTriangle(t);
+	}
+
+	int newIndex = to!int(points.length);
+	points ~= circumcenter;
+	triDB.addPoint();
+	foreach(seg; cavityEdges.byKey()){
+	  triDB.addTriangle(Triangle(seg.first, seg.second, newIndex), points);
+	}
+	return newIndex;
+  }
+
+}
+
 
 
 

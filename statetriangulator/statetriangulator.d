@@ -113,7 +113,14 @@ int main(string[] args){
   string svgFileTrimmed = to!string(svgFile[0..$-4] ~ "trimmed.svg");
   writeSVG(svgFileTrimmed, points, triDB);
 
-  refinementStep(points, triDB, segmentSet, .1, 30, .5);
+  foreach(i; 0..10){
+	if(!refinementStep(points, triDB, segmentSet, .1, 30, .5)){
+	  break;
+	}
+	writeln("mesh modified in iteration ", i);
+  }
+
+
   string svgFileRefined = to!string(svgFile[0..$-4] ~ "refined.svg");
   writeSVG(svgFileRefined, points, triDB);
   

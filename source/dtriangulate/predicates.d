@@ -6,7 +6,7 @@ import std.traits : Unqual;
 
 private auto square(T)(auto ref T t){ return t*t; }
 
-auto orient2D(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
+auto orient2D(Vec)( Vec a,  Vec b,  Vec c){
 
   alias FP = Unqual!(typeof(a.x));
   //det of [ [ (ax - cx) (ay - cy) ] [bx - cx, by - cy]]
@@ -52,7 +52,7 @@ auto orient2D(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
 }
 
 
-auto orient2DAdaptive(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c){
+auto orient2DAdaptive(Vec)( Vec a,  Vec b,  Vec c){
 
   alias FP = Unqual!(typeof(a.x));
   auto ax = AdaptiveFloat!FP(a.x);

@@ -52,6 +52,18 @@ struct Triangle{
 	return v[0] == rhs.v[0] && v[1] == rhs.v[1] && v[2] == rhs.v[2];
   }
 
+  //todo: do better?
+  size_t toHash() const @safe nothrow{
+	size_t ret = cast(size_t)(v[0]);
+	ret <<= 32;
+	size_t b = cast(size_t)(v[1]);
+	ret |= b;
+	size_t c = cast(size_t)(v[2]);
+	c <<= 16;
+	ret |= c;
+	return ret;
+  }
+
   string toString() const{
 	string ret =  "Triangle( ";
 	foreach(i ; v){
@@ -65,6 +77,36 @@ struct Triangle{
   }
   
   private int[3] v;
+}
+
+//rotate the indices so t[0] is the smallest
+Triangle canonical(Triangle t){
+  foreach(i; 0..2){ //rotate at most twice
+	if(t[1] < t[0] || t[2] < t[0]){
+	  t = Triangle(t[1], t[2], t[0]);
+	}
+  }
+  return t;
+}
+
+unittest {
+  auto t1 = Triangle(0, 1, 2);
+  auto t2 = Triangle(2, 0, 1);
+  auto t3 = Triangle(1, 2, 0);
+
+  assert(canonical(t1) == t1);
+  assert(canonical(t2) == t1);
+  assert(canonical(t3) == t1);
+
+
+  auto t4 = Triangle(0, 2, 1);
+  auto t5 = Triangle(2, 1, 0);
+  auto t6 = Triangle(1, 0, 2);
+
+  assert(canonical(t4) == t4);
+  assert(canonical(t5) == t4);
+  assert(canonical(t6) == t4);
+  
 }
 
 auto minAngleDegrees(Vec)(Triangle tri, const ref Vec[] points){
@@ -99,6 +141,36 @@ auto area(Vec)(Triangle tri, const ref Vec[] points){
   return FP(0.5)*( (b.x-a.x)*(c.y-a.y)- (c.x-a.x)*(b.y -a.y));
 
 }
+
+
+//todo does this need to be adaptive precision?
+Vec getCircumcenter(Vec)(Triangle tri, const ref Vec[] points){
+
+  auto a = points[tri[0]];
+  auto b = points[tri[1]];
+  auto c = points[tri[2]];
+
+  const auto d = 2*(a.x*(b.y - c.y) + b.x*(c.y - a.y) + c.x*(a.y - b.y));
+  
+  return Vec (
+			  (a.magnitude_squared()*(b.y - c.y) +
+			   b.magnitude_squared()*(c.y - a.y) +
+			   c.magnitude_squared()*(a.y - b.y) )/d,
+			  (a.magnitude_squared()*(c.x - b.x) +
+			   b.magnitude_squared()*(a.x - c.x) +
+			   c.magnitude_squared*(b.x - a.x))/d
+			  );
+}
+
+bool inside(Vec)( Triangle t, const ref Vec[] points, Vec p){
+  foreach(i ; 0..3){
+	if(orient2D(points[t[i]], points[t[i+1]], p) < 0){
+	  return false;
+	}
+  }
+  return true;
+}
+
 
 
 struct TriDB{
@@ -137,7 +209,7 @@ struct TriDB{
 	  }
 	}
   }
-  
+
   void deleteTriangle(Triangle t){
 	int deletedCount = 0;
 	int realCount = 0;
