@@ -199,10 +199,7 @@ struct TriDB{
 
 
   
-  void addTriangle(Vec)(Triangle t, const ref Vec[] points){
-	if(!isGhost(t[0]) && !isGhost(t[1]) && !isGhost(t[2])){
-	  //	  assert(orient2D(points[t[0]], points[t[1]], points[t[2]]) > 0);
-	}
+  void addTriangle(Triangle t){
 	foreach(i; 0..3){
 	  if(!isGhost(t[i])){ //don't add ghost edges
 		triangles[t[i]] ~= Pair(t[i+1], t[i+2]);
