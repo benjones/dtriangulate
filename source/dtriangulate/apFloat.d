@@ -47,7 +47,7 @@ public:
 	  ret.unsafePlusEq(rhs.data[0], 0, N);
 	  return ret;
 	} else static if(N ==1){
-	  auto ret = AdaptiveFloat!(FP, M + 1)(rhs);
+	  auto ret = rhs.expand!(M+1);
 	  ret.unsafePlusEq(data[0], 0, M);
 	  return ret;
 	} else {
@@ -71,15 +71,15 @@ public:
 	  ret.data[1] = aRoundoff + bRoundoff;
 	  return ret;
 	} else static if(M == 1){
-	  auto ret = expand!(N+1); //AdaptiveFloat!(FP, N + 1)(this);
+	  auto ret = expand!(N+1); 
 	  ret.unsafeMinusEq(rhs.data[0], 0, N);
 	  return ret;
 	} else static if(N == 1){
-	  auto ret = AdaptiveFloat!(FP, M + 1)(rhs);
+	  auto ret = rhs.expand!(M+1);
 	  ret.unsafeMinusEq(data[0], 0, M);
 	  return ret;
 	} else {
-	  auto ret = expand!(M+N);//AdaptiveFloat!(FP, M + N)(this);
+	  auto ret = expand!(M+N);
 	  foreach(i; 0..M){
 		ret.unsafeMinusEq(rhs.data[M - i - 1], i, N);
 	  }
