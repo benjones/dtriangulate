@@ -3,10 +3,14 @@ module dtriangulate.apFloat;
 //adaptive precision floating point number
 //based on the shewchuck paper
 
-struct AdaptiveFloat(FP, int N = 1) if (N != 0){
+struct AdaptiveFloat(FP, int N = 1){
   
 private:
+  static if(N > 0){
 	FP[N] data;
+  } else {
+	FP[] data;
+  }
 
   
 public:
@@ -29,19 +33,12 @@ public:
 	return ret;
   }
 
-  
-  AdaptiveFloat!(FP, M + N) opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(op == "+"){
 
+  
+  auto  opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(op == "+"){
+	
 	static if(M == 1 && N == 1){
-	  //shewchuck 2-add
-	  AdaptiveFloat!(FP, 2) ret;
-	  ret.data[0] = data[0] + rhs.data[0];
-	  FP bVirt = ret.data[0] - data[0];
-	  FP aVirt = ret.data[0] - bVirt;
-	  FP bRoundoff = rhs.data[0] - bVirt;
-	  FP aRoundoff = data[0] - aVirt;
-	  ret.data[1] = aRoundoff + bRoundoff;
-	  return ret;
+	  return twoAdd(data[0], rhs.data[0]);
 	} else static if(M ==1){
 	  auto ret = expand!(N+1); 
 	  ret.unsafePlusEq(rhs.data[0], 0, N);
@@ -62,22 +59,18 @@ public:
 
   AdaptiveFloat!(FP, M + N) opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if( op == "-"){
 	static if(M == 1 && N == 1){
-	  AdaptiveFloat!(FP, 2) ret;
-	  ret.data[0] = data[0] - rhs.data[0];
-	  FP bVirt = data[0] - ret.data[0];
-	  FP aVirt = ret.data[0] + bVirt;
-	  FP aRoundoff = data[0] - aVirt;
-	  FP bRoundoff = bVirt - rhs.data[0];
-	  ret.data[1] = aRoundoff + bRoundoff;
-	  return ret;
+	  return twoSub(data[0], rhs.data[0]);
+
 	} else static if(M == 1){
 	  auto ret = expand!(N+1); 
 	  ret.unsafeMinusEq(rhs.data[0], 0, N);
 	  return ret;
+	  
 	} else static if(N == 1){
 	  auto ret = rhs.expand!(M+1);
 	  ret.unsafeMinusEq(data[0], 0, M);
 	  return ret;
+	  
 	} else {
 	  auto ret = expand!(M+N);
 	  foreach(i; 0..M){
@@ -92,17 +85,9 @@ public:
 	import std.conv;
 	import std.stdio;
 	static if(M == 1 && N == 1){
-	  
-	  AdaptiveFloat!(FP, 2) ret;
-	  ret.data[0] = data[0]*rhs.data[0];
-	  auto aSplit = split();
-	  auto bSplit = rhs.split();
-	  FP err1 = ret.data[0] - (aSplit.data[0]*bSplit.data[0]);
-	  FP err2 = err1 - (aSplit.data[1]*bSplit.data[0]);
-	  FP err3 = err2 - (aSplit.data[0]*bSplit.data[1]);
-	  ret.data[1] = (aSplit.data[1]*bSplit.data[1]) - err3;
-	  return ret;
-	  
+
+	  return twoMul(this, rhs);
+
 	} else static if(M == 1){ //RHS is one float
 	  
 	  AdaptiveFloat!(FP, 2*N) ret;
@@ -166,6 +151,45 @@ public:
   
 private:
 
+  //primitive operations for 2 normal floats
+  AdaptiveFloat!(FP, 2) twoAdd(FP a, FP b){
+
+	AdaptiveFloat!(FP, 2) ret;
+	ret.data[0] = a + b;
+	FP bVirt = ret.data[0] - a;
+	FP aVirt = ret.data[0] - bVirt;
+	FP bRoundoff = b - bVirt;
+	FP aRoundoff = a - aVirt;
+	ret.data[1] = aRoundoff + bRoundoff;
+	return ret;
+
+  }
+
+  AdaptiveFloat!(FP, 2) twoSub(FP a, FP b){
+	AdaptiveFloat!(FP, 2) ret;
+	ret.data[0] = a - b;
+	FP bVirt = a - ret.data[0];
+	FP aVirt = ret.data[0] + bVirt;
+	FP aRoundoff = a - aVirt;
+	FP bRoundoff = bVirt - b;
+	ret.data[1] = aRoundoff + bRoundoff;
+	return ret;
+  }
+
+  AdaptiveFloat!(FP, 2) twoMul(AdaptiveFloat!(FP,1) a, AdaptiveFloat!(FP, 1) b){
+	
+	AdaptiveFloat!(FP, 2) ret;
+	ret.data[0] = a.data[0]*b.data[0];
+	auto aSplit = a.split();
+	auto bSplit = b.split();
+	FP err1 = ret.data[0] - (aSplit.data[0]*bSplit.data[0]);
+	FP err2 = err1 - (aSplit.data[1]*bSplit.data[0]);
+	FP err3 = err2 - (aSplit.data[0]*bSplit.data[1]);
+	ret.data[1] = (aSplit.data[1]*bSplit.data[1]) - err3;
+	return ret;
+  }
+  
+  
   AdaptiveFloat!(FP, M) expand(int M)() if(M > 1 && M >= N){
 	AdaptiveFloat!(FP, M) ret;
 	foreach(i; 0..N){
