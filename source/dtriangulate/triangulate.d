@@ -110,7 +110,7 @@ in one direction.
 
  */
 
-//want the rightmost edge.  If may edges have the same x coord
+//want the rightmost edge.  If many edges have the same x coord
 //pick the one with the smallest y coord
 
 CWEdge hullMaxXCW(Vec)(const ref TriDB triDB, const ref Vec[] points, CWEdge e){
@@ -388,18 +388,33 @@ EdgePair delaunayBaseCase(Vec, bool ByX)(ref TriDB triDB, const ref Vec[] points
 //rdi, inner ccw pointing edge from right half
 //connecting the two hulls will be CW, either right to left for horizontal,
 //or bottom to top for vertical
+//if ldi/rdi are on the same vertical line (or parts of them are)
+//remember the other coordinate must be greater for RDI
 void advanceToLowerHullEdge(Vec)(const ref TriDB triDB, const ref Vec[] points,
 							 ref CWEdge ldi, ref CCWEdge rdi){
 
+  struct Segment{Vec first, second;}
   while(true){
 	auto lo2d = orient2D(points[ldi.first], points[ldi.second], points[rdi.first]);
 	if(lo2d > 0){ //rdi.first is to the left of edge ldi, advance ldi
 	  ldi = hullAdvance(triDB, ldi);
 	  continue;
+	} else if(lo2d == 0 &&
+			  inFrontOf(Segment(points[ldi.first], points[ldi.second]), points[rdi.first])){
+
+	  ldi = hullAdvance(triDB, ldi);
+	  continue;
 	}
 
+	//since rdi must be "above" ldi, if ldi's point is collinear with rdi,
+	//we want to keep advancing it.  
 	auto ro2d = orient2D(points[rdi.first], points[rdi.second], points[ldi.first]);
-	if(ro2d < 0){ //ldi.first is right of edge rdi
+	if(ro2d < 0){ //ldi.first is right of or collinear with edge rdi
+	  rdi = hullAdvance(triDB, rdi);
+	  continue;
+	} else if(ro2d == 0 &&
+			  inFrontOf(Segment(points[rdi.first], points[rdi.second]), points[ldi.first])){
+
 	  rdi = hullAdvance(triDB, rdi);
 	  continue;
 	}
@@ -411,15 +426,17 @@ void advanceToLowerHullEdge(Vec)(const ref TriDB triDB, const ref Vec[] points,
  
 EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWEdge rdi, bool byX){
   
-  //writefln("zipping, ByX: %s, ldi: %s, rdi: %s", byX, ldi, rdi);
+  writefln("zipping, ByX: %s, ldi: %s, rdi: %s", byX, ldi, rdi);
+  writeln("ldi: ", points[ldi.first], points[ldi.second]);
+  writeln("rdi: ", points[rdi.first], points[rdi.second]);
   advanceToLowerHullEdge(triDB, points, ldi, rdi);
   
   CCWEdge rToL = CCWEdge(Pair(rdi.first, ldi.first)); //CCW when viewed from the top
   //it's CW if we're on the bottom
   CWEdge start = CWEdge(Pair(rToL.first, rToL.second)); //save this for later
   
-  //writeln("updated ldi: ", ldi, " rdi: " , rdi);
-  //writefln("rtol to start: %d, %d", rToL.first, rToL.second);
+  writeln("updated ldi: ", ldi, " rdi: " , rdi);
+  writefln("rtol to start: %d, %d", rToL.first, rToL.second);
 
   auto preRdi = hullReverse(triDB, rdi).first;
   //writeln("preRdi: ", preRdi);
@@ -526,7 +543,7 @@ EdgePair zipHulls(Vec)(ref TriDB triDB, const ref Vec[] points, CWEdge ldi, CCWE
   }
 }
 
-
+int svgCount = 0;
 EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, int[] indices){
 
   assert(indices.length > 1);
@@ -555,6 +572,7 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 
 	
 	static if(ByX){
+	  //if the x coordinates are equal, ep2's point's y coordinate must be greater thatn ep1's
 	  if(points[ep1.ccwEdge.first].x == points[ep2.cwEdge.first].x){
 		zipByX = false;
 		writefln("swapped zipByX from %s  to %s", ByX, zipByX);
@@ -587,9 +605,14 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 	//	writefln("ldi: %s,   rdi:  %s", ldi, rdi);
 
 
-	//writefln("about to zip hulls with %d total points", indices.length);
+	writefln("about to zip hulls with %d total points", indices.length);
 	auto retEdgePair = zipHulls!(Vec)(triDB, points, ldi, rdi, zipByX);
 
+	//	writeHulls(to!string("hulls" ~ to!string(svgCount) ~ ".svg"), points, triDB); 
+	//	writeSVG(to!string("step" ~ to!string(svgCount++) ~ ".svg"), points, triDB);
+
+	//ohullCheck(triDB, points, retEdgePair.cwEdge);
+	
 	//since we are either correct or collinear, we should be good.
 	//zip should make sure that things work correctly for the collinear case
 	//	if(ByX == zipByX){
@@ -693,6 +716,8 @@ struct ClearCavityList{ int[] left; int[] right;}
 //once we add s to the triangulation, we'll need to retriangulate those holes
 ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 
+  writeln("clearing cavity for segment ", s);
+  
   int[] leftPoints = [s.second];
   int[] rightPoints = [s.first];
 
@@ -743,7 +768,9 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 	}
 	adj = newAdj;
   }
+  writeln("deleting ", Triangle(adj, vw.second, vw.first));
   triDB.deleteTriangle(Triangle(adj, vw.second, vw.first));
+
   rightPoints ~= s.second;
   leftPoints ~= s.first;
   import std.algorithm : reverse;
@@ -759,6 +786,7 @@ void cavityInsertVertex(Vec)(const Vec[] points, ref TriDB triDB, int[] poly, in
 	if(orient2D(points[poly[u]], points[poly[v]], points[poly[w]]) > 0 &&
 	   !inCircle(points[poly[u]], points[poly[v]], points[poly[w]], points[poly[x]])){
 	  //uvw is constrained delaunay because the point on the other side is far enough away
+	  writeln("adding ", Triangle(u, v, w));
 	  triDB.addTriangle(Triangle(u, v, w), points);
 	} else {
 	  triDB.deleteTriangle(Triangle(w, v, x));
@@ -767,6 +795,7 @@ void cavityInsertVertex(Vec)(const Vec[] points, ref TriDB triDB, int[] poly, in
 	}
   } else {
 	//uvw is constrained delaunay, because there's nothing on the other side of vw
+	writeln("adding ", Triangle(u, v, w));
 	triDB.addTriangle(Triangle(u, v, w), points);
   }
   
@@ -810,13 +839,18 @@ void fillCavity(Vec)(const Vec[] points, ref TriDB triDB, int[] poly){
   }
 
   TriDB cavityTriangles = TriDB(poly.length);
+
+  //  auto cavityPoints = poly.map!(i => Vec(points[i])).array;
+  
   cavityTriangles.addTriangle(Triangle(0, perm[0], to!int(poly.length -1)), points);
   
   foreach(i; 1..perm.length){
 	cavityInsertVertex(points, cavityTriangles, poly, perm[i], next[perm[i]], prev[perm[i]]);
   }
 
-  triDB.addTriangulatedPolygon(triDB, poly);
+  
+  
+  triDB.addTriangulatedPolygon(cavityTriangles, poly);
 }
 
 bool isEncroached(Vec)(const ref Vec[] points, const ref TriDB triDB, Pair segment){
@@ -1112,8 +1146,9 @@ Vec[] prepareSVG(Vec)(ref File f, const Vec[] points, const int[] activePoints){
 	f.writeln("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"800\" ></svg>");
 	return [];
   }
+  //using a delecate to store a copy of the points, not a reference
   Vec[] usedPoints = activePoints.map!(delegate Vec(int a){ return points[a]; }).array;
-
+  
   
   Vec minP = Vec(usedPoints.map!("a.x").minElement(), usedPoints.map!("a.y").minElement());
   Vec maxP = Vec(usedPoints.map!("a.x").maxElement(), usedPoints.map!("a.y").maxElement());
@@ -1131,21 +1166,17 @@ Vec[] prepareSVG(Vec)(ref File f, const Vec[] points, const int[] activePoints){
 
   auto aspectRatio = size.y/size.x;
 
-  auto width = 800;
-  auto height = 800;//*aspectRatio;
+  auto width = 1600;
+  auto height = 1600;//*aspectRatio;
 
 
-  Vec[] scaledPoints = points.map!( a => (a - center)*(1/maxDim))
+  Vec[] scaledPoints = points.map!( a => (a - center)*(10/maxDim))
 	//	.map!(a => Vec(a.x*2.5, a.y))
 	.array;
   
   f.write("<svg xmlns=\"http://www.w3.org/2000/svg\"  ");
-  //  f.writefln("width=\"800\" height=\"%.8f\" viewBox=\"-0.5 %.8f 1 %.8f\" >",
-  //			 height, -.5, 1.0);
-  f.writefln("width=\"%d\" height=\"%d\" viewBox=\"-0.5 -0.5 1 1\" >", width, height);
+  f.writefln("width=\"%d\" height=\"%d\" viewBox=\"-5 -5 10 10\" >", width, height);
   
-  //  f.writefln("<g transform=\"scale(%.8f,  %.8f)\">", (1.0/size.x), (-1.0/size.y)*aspectRatio);
-  //f.writefln( "<g transform=\"translate(%.8f, %.8f)\" >", -(minP.x + .5*size.x), -(minP.y+ .5*size.y));
   f.writeln("<g transform=\"scale(1, -1)\" >");
 
   return scaledPoints;
@@ -1186,10 +1217,10 @@ void writeSVG(Vec)(string filename, const Vec[] points, const ref TriDB triDB){
 
   foreach(i ; activePoints){
 	const auto p = scaledPoints[i];
-	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .001);
+	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .01);
 	f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
 				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"red\" >%d</text></g>",
-				p.x, p.y, .002, i);
+				p.x, p.y, .02, i);
 
   }
   f.writeln("</g>\n</svg>");
@@ -1209,17 +1240,17 @@ void writeHulls(Vec)(string filename, const Vec[] points, const ref TriDB triDB)
   int color = 0;
   foreach(i; activePoints){
 	if(!neededPoints[i]){ continue; }
-	int ccwOfI = i;
+	int cwOfI = i;
 	foreach(vw; triDB.getTriangles(i)){
 	  if(!TriDB.isGhost(vw.first) && TriDB.isGhost(vw.second)){
-		ccwOfI = vw.first;
+		cwOfI = vw.first;
 		break;
 	  }
 	}
 	//not on the hull, skip this
-	if(ccwOfI == i){ continue; }
-	CCWEdge e = CCWEdge(Pair(i, ccwOfI));
-	CCWEdge start = e;
+	if(cwOfI == i){ continue; }
+	CWEdge e = CWEdge(Pair(i, cwOfI));
+	CWEdge start = e;
 	do{
 	  f.writefln("<line x1=\"%.8f\" y1=\"%.8f\" x2=\"%.8f\" y2=\"%.8f\" stroke=\"%s\" stroke-width=\"%.8f\" />",
 			   scaledPoints[e.first].x, scaledPoints[e.first].y,
@@ -1227,11 +1258,29 @@ void writeHulls(Vec)(string filename, const Vec[] points, const ref TriDB triDB)
 			   colors[color % colors.length], .001);
 	  neededPoints[e.first] = false;
 	  e = hullAdvance(triDB, e);
-			   
+
+	  auto p = scaledPoints[e.first];
+	  f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .002);
+	  f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
+				  "<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"%s\" >%d</text></g>",
+				  p.x, p.y, .015, colors[color % colors.length], e.first);
+	  
+	  
 	  
 	}while(e != start);
 	++color;
   }
+
+  /*foreach(i ; activePoints){
+	const auto p = scaledPoints[i];
+	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .002);
+	f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
+				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"red\" >%d</text></g>",
+				p.x, p.y, .015, i);
+	
+				}*/
+
+  
   writefln("hulls this frame: %d" , color);
   f.writeln("</g>\n</svg>");
 }

@@ -3,6 +3,7 @@ module dtriangulate.predicates;
 public import dtriangulate.apFloat;
 
 import std.traits : Unqual;
+import std.math : abs;
 
 private auto square(T)(auto ref T t){ return t*t; }
 
@@ -78,7 +79,6 @@ bool isInCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Ve
 }
 
 auto inCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
-  import std.math;
 
   alias FP = Unqual!(typeof(a.x));
   FP adx = a.x - d.x;
@@ -427,4 +427,93 @@ bool pointInDiametricCircleAdaptive(Vec)(Vec a,  Vec midpoint,  Vec p){
   
   return x11.asReal() > 0;
   
+}
+
+
+
+/*
+  Error analysis for in front of
+  
+  t = true value
+
+  t0 = s2x - s1x
+  t1 = s2y - s1y
+  t2 = p1x - s1x
+  t3 = p1y - s1y
+  t4 = t0 * t2
+  t5 = t1 * t3
+  t6 = t4 + t5
+
+  x* = floatApprox(t*)
+
+
+  t[0-3] = x[0-3] +/- eps*abs(x[0-3]) 
+  
+  t4 = (x0 +/- eps *abs(x0) )*(x2 +/- eps*abs(x2))
+     = x0*x2 + 2*eps*abs(x0*x2) + abs(x0*x2)*eps^2 //sub in x4 = x0*x2 + eps*abs(x4)
+     = x4 + eps*abs(x4) + 2*eps*(abs(x4) + eps*abs(x4)) + (x4 + eps*abs(x4))*eps^2
+     = x4 + eps*abs(x4) *( 3 + 3*eps + eps^2)
+
+   similarly for t5
+   
+   t6 = t4 + t5
+     = (x4 + abs(x4)*eps*(3 + 3*eps + eps^2) + (x5 + abs(x5)*eps*(3 + e*eps + eps^2) 
+     = x4 + x5 + abs(x4 + x5)*eps(3 + 3*eps + eps^2)
+     = (x6 + eps*abs(x6)) + abs(x6 + eps*abs(x6))*eps*(3 + 3*eps + eps^2)
+     = x6 + eps*abs(x6) + eps*abs(x6)(1 + eps ) *(3 + e*eps + eps^2) 
+	 = x6 + eps*abs(x6)*( 1 + (1 + eps)*(e + 3*eps + eps^2)
+
+	 //tolerance = eps*abs(x6)*(1 + (1 + eps)*(3 + 3*eps + eps^2))
+
+ */
+
+
+//I think only useful when orient2d is exactly zero
+bool inFrontOf(Vec, Segment)(Segment s, Vec p){
+
+  alias FP = Unqual!(typeof(p.x));
+  
+  auto vx = s.second.x - s.first.x;
+  auto vy = s.second.y - s.first.y;
+
+  auto apx = p.x - s.first.x;
+  auto apy = p.y - s.first.y;
+
+  auto dx = vx*apx;
+  auto dy = vy*apy;
+
+  auto dotProduct = dx + dy;
+
+  auto tol = FP.epsilon*abs(dotProduct)*( 1 + (1 + FP.epsilon)*(3 + 3*FP.epsilon + FP.epsilon*FP.epsilon));
+
+  if(abs(dotProduct) > tol){
+	return dotProduct > 0;
+  } else {
+	return inFrontOfAdaptive(s, p);
+  }
+  
+}
+
+bool inFrontOfAdaptive(Vec, Segment)(Segment s, Vec p){
+  alias FP = Unqual!(typeof(p.x));
+  
+  auto ssx = AdaptiveFloat!FP(s.second.x);
+  auto ssy = AdaptiveFloat!FP(s.second.y);
+  auto sfx = AdaptiveFloat!FP(s.first.x);
+  auto sfy = AdaptiveFloat!FP(s.first.y);
+  auto px = AdaptiveFloat!FP(p.x);
+  auto py = AdaptiveFloat!FP(p.y);
+  
+  auto vx = ssx - sfx;
+  auto vy = ssy - ssy;
+
+  auto apx = px - sfx;
+  auto apy = py - sfy;
+
+  auto dx = vx*apx;
+  auto dy = vy*apy;
+
+  auto dotProduct = dx + dy;
+
+  return dotProduct.asReal() > 0;
 }

@@ -57,14 +57,28 @@ int main(string[] args){
 	points[i].x = shape.padfX[i + shape.panPartStart[partNumber]];
 	points[i].y = shape.padfY[i + shape.panPartStart[partNumber]];
   }
-  writeln(points);
+  //  writeln(points);
 
   import std.algorithm.iteration : uniq;
   import std.array : array;
+  auto sizeBefore = points.length;
   points = points.uniq.array;
+  auto sizeAfter = points.length;
+  if(sizeBefore != sizeAfter){
+	writeln("unique deleted ", sizeBefore - sizeAfter, " points");
+  }
   if(points[0] == points[$-1]){
+	writeln("deleted duplicate start/end point");
 	points = points[0..$-1]; 
   }
+
+  /*  auto pointsCopy = points.dup;
+  sort(pointsCopy);
+  if(!pointsCopy.findAdjacent.empty){
+	writeln("duplicate points, oh shit!");
+	assert(0);
+	}*/
+  
 
   //  points ~= 0.5*(points[259] + points[260]);
   
