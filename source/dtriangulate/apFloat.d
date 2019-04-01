@@ -42,16 +42,16 @@ public:
 	  return twoAdd(data[0], rhs.data[0]);
 	} else static if(M ==1){
 	  auto ret = incrementExpansion();
-	  ret.unsafePlusEq(rhs.data[0], 0, N);
+	  ret.unsafePlusEq(rhs.data[0], 0, size());
 	  return ret;
 	} else static if(N ==1){
 	  auto ret = rhs.incrementExpansion();
-	  ret.unsafePlusEq(data[0], 0, M);
+	  ret.unsafePlusEq(data[0], 0, rhs.size());
 	  return ret;
 	} else {
 	  auto ret = expandToAdd(rhs);
-	  foreach(i; 0..M){
-		ret.unsafePlusEq(rhs.data[M - i - 1], i, N);
+	  foreach(i; 0..rhs.size()){
+		ret.unsafePlusEq(rhs.data[rhs.size() - i - 1], i, size());
 	  }
 	  return ret;
 	}
@@ -64,18 +64,18 @@ public:
 
 	} else static if(M == 1){
 	  auto ret = incrementExpansion();
-	  ret.unsafeMinusEq(rhs.data[0], 0, N);
+	  ret.unsafeMinusEq(rhs.data[0], 0, size());
 	  return ret;
 	  
 	} else static if(N == 1){
 	  auto ret = rhs.incrementExpansion();
-	  ret.unsafeMinusEq(data[0], 0, M);
+	  ret.unsafeMinusEq(data[0], 0, rhs.size());
 	  return ret;
 	  
 	} else {
 	  auto ret = expandToAdd(rhs);
-	  foreach(i; 0..M){
-		ret.unsafeMinusEq(rhs.data[M - i - 1], i, N);
+	  foreach(i; 0..rhs.size()){
+		ret.unsafeMinusEq(rhs.data[rhs.size() - i - 1], i, size());
 	  }
 	  return ret;
 	}
@@ -92,20 +92,20 @@ public:
 	} else static if(M == 1){ //RHS is one float
 	  
 	  AdaptiveFloat!(FP, 2*N) ret;
-	  auto temp = AdaptiveFloat!FP(data[N - 1])*rhs; //T.N == 2
+	  auto temp = AdaptiveFloat!FP(data[size() - 1])*rhs; //T.N == 2
 
-	  ret.data[2*N -1] = temp.data[1];
+	  ret.data[2*size() -1] = temp.data[1];
 
-	  foreach(i ; 1..N){
-		AdaptiveFloat!(FP, 2*M) temp2 = AdaptiveFloat!FP(data[N - 1 - i])*rhs; //T2.N == 2
+	  foreach(i ; 1..size()){
+		auto temp2 = AdaptiveFloat!FP(data[size() - 1 - i])*rhs; //T2.N == 2
 
 		//T3.N == 2
 		auto temp3 = AdaptiveFloat!FP(temp.data[0]) + AdaptiveFloat!FP(temp2.data[1]);
-		ret.data[2*N - 2*i] = temp3.data[1];
+		ret.data[2*size() - 2*i] = temp3.data[1];
 
 		//sum should have N == 2
 		temp = AdaptiveFloat!FP(temp3.data[0]) + AdaptiveFloat!FP(temp2.data[0]);
-		ret.data[2*N - 2*i - 1] = temp.data[1];
+		ret.data[2*size() - 2*i - 1] = temp.data[1];
 	  }
 	  ret.data[0] = temp.data[0];
 	  return ret;
@@ -116,18 +116,18 @@ public:
 	  return rhs*this;
 	} else {
 	  //N <= M
-	  AdaptiveFloat!(FP, 2*M) partial = rhs*AdaptiveFloat!FP(data[0]); //FP 2*M
+	  auto partial = rhs*AdaptiveFloat!FP(data[0]); //FP 2*M
 	  auto ret = partial.expandToMultiply(this);
 	  //		auto ret = (rhs*AdaptiveFloat!FP(data[0])).expandBy!(2*M*N - 2*M);
 	  
-	  foreach(i; 1..N){
+	  foreach(i; 1..size()){
 		auto partialProduct = rhs*AdaptiveFloat!FP(data[i]); //N = 2*M
 		//writefln("partial prod, %s", partialProduct);
 		//TODO, we probably don't need to start at j,
 		//since it's the product of something bigger, there's probably
 		//a proof that it won't kick in until higher up the chain
-		foreach(j; 0..(2*M)){
-		  ret.unsafePlusEq(partialProduct.data[j], j, 2*M*i);
+		foreach(j; 0..(2*rhs.size())){
+		  ret.unsafePlusEq(partialProduct.data[j], j, 2*rhs.size()*i);
 		}
 	  }
 	  return ret;
@@ -235,23 +235,24 @@ private:
 	ret.data[0..(ret.size() - size())] = 0;
 	return ret;
   }
+
   
-  void unsafePlusEq(FP f, int first, int len){
+  void unsafePlusEq(FP f, ulong first, ulong len){
 	auto q = AdaptiveFloat!FP(f);
 	foreach(i; first..(first + len)){
 	  auto t1 = AdaptiveFloat!FP(data[N - i - 1]);
 	  auto temp = q + t1;
 	  q.data[0] = temp.data[0];
-	  data[N - i - 1] = temp.data[1];
+	  data[size() - i - 1] = temp.data[1];
 	}
-	data[N - first - len -1] = q.data[0];
+	data[size() - first - len -1] = q.data[0];
   }
 
-  void unsafeMinusEq(FP f, int first, int len){
+  void unsafeMinusEq(FP f, ulong first, ulong len){
 	auto q = AdaptiveFloat!FP(f);
-	auto t1 = AdaptiveFloat!FP(data[N - first - 1]);
+	auto t1 = AdaptiveFloat!FP(data[size() - first - 1]);
 	auto temp = t1 - q;
-	data[N - first - 1] = temp.data[1];
+	data[size() - first - 1] = temp.data[1];
 	unsafePlusEq(temp.data[0], first + 1, len -1);
   }
 
