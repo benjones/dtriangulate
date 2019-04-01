@@ -175,8 +175,11 @@ unittest{
   import std.algorithm;
   import std.stdio;
 
+
   int failures = 0;
-  foreach(i ; 0..100000){
+
+  bool predInsideFound = false, predOutsideFound = false;
+  foreach(i ; 0..200000){
 	float x = uniform(0.0f, 1.0f);
 	float y = uniform(0.0f, 1.0f);
 
@@ -201,16 +204,20 @@ unittest{
 
 	bool insideRad = dist.asReal() < 0;
 
-	bool inPred = inCircle(pts[0], pts[1], pts[2], Vec(x, y)) > 0;
 	
+	bool inPred = inCircle(pts[0], pts[1], pts[2], Vec(x, y)) > 0;
+	if(inPred){ predInsideFound = true; }
+	else { predOutsideFound = true; }
 	if(insideRad != inPred){
 	  ++failures;
-	  writefln("failure: (%f, %f), (%f, %f), (%f, %f), (%f, %f), dist: %d, pred: %d",
+	  writefln("failure: (%16f, %16f), (%16f, %16f), (%16f, %16f), (%16f, %16f), dist: %d, pred: %d",
 			   pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y,x, y, insideRad, inPred);
 	}
 	
   }
   assert(failures < 10);
+  assert(predInsideFound);
+  assert(predOutsideFound);
   }
 
 

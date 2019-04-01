@@ -200,11 +200,9 @@ private:
 	} else {
 	  AdaptiveFloat!(FP, N+1) ret; 
 	}
-	
-	foreach(i; 0..size()){
-	  ret.data[ret.size() - i - 1] = data[size() - i - 1];
-	}
-	ret.data[0] = 0; //expanded by 1, so set it to 0;
+
+	ret.data[1.. $] = data[];
+	ret.data[0] = 0; //expanded by 1, so set new entry to 0;
 	return ret;
   }
 
@@ -216,12 +214,10 @@ private:
 	} else {
 	  AdaptiveFloat!(FP, M+N) ret;
 	}
-	foreach(i; 0..size()){
-	  ret.data[ret.size() - i - 1] = data[size() - i - 1];
-	}
-	foreach(i; 0..(ret.size() - size())){
-	  ret.data[i] = 0;
-	}
+
+	ret.data[other.size()  .. $] = data[];
+	ret.data[0..other.size()] = 0;
+
 	return ret;
   }
 
@@ -234,32 +230,11 @@ private:
 	} else {
 	  AdaptiveFloat!(FP, M*N) ret;
 	}
-	foreach(i; 0..size()){
-	  ret.data[ret.size() - i - 1] = data[size() - i - 1];
-	}
-	foreach(i; 0..(ret.size() - size())){
-	  ret.data[i] = 0;
-	}
+
+	ret.data[(ret.size() - size()) .. $] = data[];
+	ret.data[0..(ret.size() - size())] = 0;
 	return ret;
   }
-  /*  
-  auto expandBy(int M)(){
-
-	static if(N == 0 || M == 0){
-	  AdaptiveFloat!(FP, 0) ret;
-	  ret.data = new FP[size() + M]
-	}
-	
-	enum NewSize = N+M;
-	AdaptiveFloat!(FP, NewSize) ret;
-	foreach(i; 0..N){
-	  ret.data[NewSize - i - 1] = data[N - i - 1];
-	}
-	foreach(i; 0..(NewSize - N)){
-	  ret.data[i] = 0;
-	}
-	return ret;
-	}*/
   
   void unsafePlusEq(FP f, int first, int len){
 	auto q = AdaptiveFloat!FP(f);
