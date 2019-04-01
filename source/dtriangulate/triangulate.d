@@ -1291,7 +1291,6 @@ void writeHulls(Vec)(string filename, const Vec[] points, const ref TriDB triDB)
 
 
 unittest{
-
   writeln("\n\n\n2 points test");
   
   vec2[] points = [ vec2(0,0), vec2(1,1) ];
@@ -1310,7 +1309,6 @@ unittest{
 
 
 unittest{
-
   writeln("\n\n\n\n4 points test");
   vec2[] points  = [vec2(0,0), vec2(1,1), vec2(0.2, 0.9), vec2(0.9, 1)];
   auto triDB = delaunayTriangulate(points);
@@ -1327,7 +1325,6 @@ unittest{
   
   assert(tris.length == 6);
 
-  
 }
 
 

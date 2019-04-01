@@ -5,6 +5,7 @@ public import dtriangulate.apFloat;
 import std.traits : Unqual;
 import std.math : abs;
 
+
 private auto square(T)(auto ref T t){ return t*t; }
 
 auto orient2D(Vec)( Vec a,  Vec b,  Vec c){
@@ -55,6 +56,7 @@ auto orient2D(Vec)( Vec a,  Vec b,  Vec c){
 
 auto orient2DAdaptive(Vec)( Vec a,  Vec b,  Vec c){
 
+  
   alias FP = Unqual!(typeof(a.x));
   auto ax = AdaptiveFloat!FP(a.x);
   auto ay = AdaptiveFloat!FP(a.y);
@@ -121,7 +123,6 @@ auto inCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec 
 }
 
 auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
-
   alias FP = Unqual!(typeof(a.x));
   alias AF1 = AdaptiveFloat!(FP, 1);
   AF1 ax = AF1(a.x);
@@ -167,6 +168,7 @@ auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto
   
 }
 
+
 unittest{
   import std.random;
   import std.math;
@@ -209,7 +211,7 @@ unittest{
 	
   }
   assert(failures < 10);
-}
+  }
 
 
 /*
@@ -343,7 +345,6 @@ unittest{
   assert(closer(p0, p1, t) == 1);
   assert(closer(p1, p0, t) == 0);
   
-
   
   
 }
