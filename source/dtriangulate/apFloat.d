@@ -13,6 +13,8 @@ private:
 	FP[] data;
   }
   auto size() const{ return data.length; }
+
+  enum StaticSizeLimit = 64;
   
 public:
   static if(N == 1){
@@ -36,7 +38,7 @@ public:
 
 
   
-  auto  opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(op == "+"){
+  auto opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(op == "+"){
 	
 	static if(M == 1 && N == 1){
 	  return twoAdd(data[0], rhs.data[0]);
@@ -58,7 +60,7 @@ public:
 	
   }
 
-  AdaptiveFloat!(FP, M + N) opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if( op == "-"){
+  auto opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if( op == "-"){
 	static if(M == 1 && N == 1){
 	  return twoSub(data[0], rhs.data[0]);
 
@@ -82,7 +84,7 @@ public:
   }
 
 
-  AdaptiveFloat!(FP, 2*M*N) opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(op == "*"){
+  auto opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(op == "*"){
 	import std.conv;
 	import std.stdio;
 	static if(M == 1 && N == 1){
@@ -207,10 +209,9 @@ private:
   }
 
   auto expandToAdd(int M)(const ref AdaptiveFloat!(FP, M) other) const{
-	static if(N==0 || M==0){
+	static if( N==0 || M==0 || ( (M+N) > StaticSizeLimit) ){
 	  AdaptiveFloat!(FP, 0) ret;
 	  ret.data = new FP[size() + other.size()];
-	  assert(0);
 	} else {
 	  AdaptiveFloat!(FP, M+N) ret;
 	}
@@ -223,10 +224,9 @@ private:
 
 
   auto expandToMultiply(int M)(const ref AdaptiveFloat!(FP, M) other) const{
-	static if(N==0 || M==0){
+	static if(N==0 || M==0 || ((M*N) > StaticSizeLimit) ){
 	  AdaptiveFloat!(FP, 0) ret;
 	  ret.data = new FP[size()*other.size()];
-	  assert(0);
 	} else {
 	  AdaptiveFloat!(FP, M*N) ret;
 	}
@@ -240,7 +240,7 @@ private:
   void unsafePlusEq(FP f, ulong first, ulong len){
 	auto q = AdaptiveFloat!FP(f);
 	foreach(i; first..(first + len)){
-	  auto t1 = AdaptiveFloat!FP(data[N - i - 1]);
+	  auto t1 = AdaptiveFloat!FP(data[size() - i - 1]);
 	  auto temp = q + t1;
 	  q.data[0] = temp.data[0];
 	  data[size() - i - 1] = temp.data[1];
