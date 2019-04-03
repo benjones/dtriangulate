@@ -143,16 +143,17 @@ auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto
   auto cdx = cx - dx;
   auto cdy = cy - dy;
 
-  //8 component AFs
+  //16 component AFs
   auto aLift = square(adx) + square(ady);
   auto bLift = square(bdx) + square(bdy);
   auto cLift = square(cdx) + square(cdy);
 
-  //128 compoent AFS
+  //(2*2*2) = 8 compoent AFS
   auto bxcy = bdx*cdy;
   auto bycx = bdy*cdx;
 
-  //256
+  //(2 * 16 * (16)) = 512 components
+  //it's a 16*16, 
   auto aCofactor = aLift*(bxcy - bycx);
   
   auto axcy = adx*cdy;

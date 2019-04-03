@@ -716,7 +716,7 @@ struct ClearCavityList{ int[] left; int[] right;}
 //once we add s to the triangulation, we'll need to retriangulate those holes
 ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 
-  writeln("clearing cavity for segment ", s);
+  //  writeln("clearing cavity for segment ", s);
   
   int[] leftPoints = [s.second];
   int[] rightPoints = [s.first];
@@ -735,7 +735,7 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 	vw = Pair(vw.second, adj);
   }
   //and delete it
-  writeln("about to delete first edge: ", u, vw);
+  //  writeln("about to delete first edge: ", u, vw);
   triDB.deleteTriangle(Triangle(u, vw.first, vw.second));
 
   if(leftOf(points[vw.first], s1, s2)){
@@ -786,7 +786,7 @@ void cavityInsertVertex(Vec)(const Vec[] points, ref TriDB triDB, int[] poly, in
 	if(orient2D(points[poly[u]], points[poly[v]], points[poly[w]]) > 0 &&
 	   !inCircle(points[poly[u]], points[poly[v]], points[poly[w]], points[poly[x]])){
 	  //uvw is constrained delaunay because the point on the other side is far enough away
-	  writeln("adding ", Triangle(u, v, w));
+	  //	  writeln("adding ", Triangle(u, v, w));
 	  triDB.addTriangle(Triangle(u, v, w));
 	} else {
 	  triDB.deleteTriangle(Triangle(w, v, x));
@@ -795,7 +795,7 @@ void cavityInsertVertex(Vec)(const Vec[] points, ref TriDB triDB, int[] poly, in
 	}
   } else {
 	//uvw is constrained delaunay, because there's nothing on the other side of vw
-	writeln("adding ", Triangle(u, v, w));
+	//	writeln("adding ", Triangle(u, v, w));
 	triDB.addTriangle(Triangle(u, v, w));
   }
   
@@ -904,7 +904,7 @@ bool refinementStep(Vec, FP)(ref Vec[] points, ref TriDB triDB,  ref bool[Pair] 
   
   bool modifiedMesh = false;
 
-  writeln("encroached segs: ", segmentHeap.length, " enrcoached tris: ", triangleHeap.length);
+  //  writeln("encroached segs: ", segmentHeap.length, " enrcoached tris: ", triangleHeap.length);
   
   while(!segmentHeap.empty || !triangleHeap.empty){
 	//prefer to split based on segments first
@@ -954,7 +954,7 @@ bool refinementStep(Vec, FP)(ref Vec[] points, ref TriDB triDB,  ref bool[Pair] 
 int boyerWatsonSplitEdge(Vec)(ref Vec[] points, ref TriDB triDB, ref bool[Pair] segmentSet, Pair s){
   
   import std.stdio;
-  writeln("spltting ", s);
+  //  writeln("spltting ", s);
   int newIndex = to!int(points.length);
   Vec midpoint = 0.5*(points[s.first] + points[s.second]);
   points ~= midpoint;
@@ -1034,7 +1034,7 @@ int boyerWatsonSplitTriangle(Vec, Heap, FP)(ref Vec[] points, ref TriDB triDB, r
   struct Segment{Vec first, second;}
 
   import std.stdio;
-  writeln("splitting ", triToSplit);
+  //  writeln("splitting ", triToSplit);
 
   
   Vec circumcenter = getCircumcenter(triToSplit, points);

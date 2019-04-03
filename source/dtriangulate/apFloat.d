@@ -4,6 +4,7 @@ module dtriangulate.apFloat;
 //based on the shewchuck paper
 //N == 0 means "dynamically sized."  Positive int sizes use an internal static array
 //dynamic AF's store data on the heap and keep a slice
+//the notation is backwards from shewchuck.  We store things in decreasing order
 struct AdaptiveFloat(FP, int N = 1){
 
 private:
@@ -14,7 +15,7 @@ private:
   }
   auto size() const{ return data.length; }
 
-  enum StaticSizeLimit = 64;
+  enum StaticSizeLimit = 8;
   
 public:
   static if(N == 1){
@@ -24,7 +25,7 @@ public:
   } 
   
   FP asReal(){
-	return data[0];
+	return data[0]; 
   }
   
   AdaptiveFloat!(FP, N) opUnary(string op)() const if(op == "-"){
@@ -39,7 +40,7 @@ public:
 
   
   auto opBinary(string op, int M)(auto ref AdaptiveFloat!(FP, M) rhs) if(op == "+"){
-	
+
 	static if(M == 1 && N == 1){
 	  return twoAdd(data[0], rhs.data[0]);
 	} else static if(M ==1){
@@ -54,6 +55,11 @@ public:
 	  auto ret = expandToAdd(rhs);
 	  foreach(i; 0..rhs.size()){
 		ret.unsafePlusEq(rhs.data[rhs.size() - i - 1], i, size());
+	  }
+	  static if(M == 0 || N == 0 || (M+N > StaticSizeLimit)){
+		if(ret.size() > StaticSizeLimit){
+		  ret.compress();
+		}
 	  }
 	  return ret;
 	}
@@ -79,6 +85,11 @@ public:
 	  foreach(i; 0..rhs.size()){
 		ret.unsafeMinusEq(rhs.data[rhs.size() - i - 1], i, size());
 	  }
+	  static if(M == 0 || N == 0  || (M+N > StaticSizeLimit)){
+		if(ret.size() > StaticSizeLimit){
+		  ret.compress();
+		}
+	  }
 	  return ret;
 	}
   }
@@ -92,8 +103,13 @@ public:
 	  return twoMul(this, rhs);
 
 	} else static if(M == 1){ //RHS is one float
-	  
-	  AdaptiveFloat!(FP, 2*N) ret;
+
+	  static if(N > 0){
+		AdaptiveFloat!(FP, 2*N) ret; 
+	  } else {
+		AdaptiveFloat!(FP, 0) ret;
+		ret.data = new FP[2*size()];
+	  }
 	  auto temp = AdaptiveFloat!FP(data[size() - 1])*rhs; //T.N == 2
 
 	  ret.data[2*size() -1] = temp.data[1];
@@ -110,14 +126,13 @@ public:
 		ret.data[2*size() - 2*i - 1] = temp.data[1];
 	  }
 	  ret.data[0] = temp.data[0];
+
 	  return ret;
 	  
 	} else static if(N ==1){ //LHS is one float, use the above
 	  return rhs*this;
-	} else static if(M < N){
-	  return rhs*this;
 	} else {
-	  //N <= M
+	  //  M, N > 1... so just do it?
 	  auto partial = rhs*AdaptiveFloat!FP(data[0]); //FP 2*M
 	  auto ret = partial.expandToMultiply(this);
 	  //		auto ret = (rhs*AdaptiveFloat!FP(data[0])).expandBy!(2*M*N - 2*M);
@@ -132,10 +147,12 @@ public:
 		  ret.unsafePlusEq(partialProduct.data[j], j, 2*rhs.size()*i);
 		}
 	  }
+	  static if(M == 0 || N == 0  || (M+N > StaticSizeLimit) ){
+		if(ret.size() > StaticSizeLimit){
+		  ret.compress();
+		}
+	  }
 	  return ret;
-	  
-	  
-	  
 	}
   }
   
@@ -148,6 +165,17 @@ public:
 	}
 	ret ~= " ]";
 	return ret;
+  }
+
+  void checkRep(){
+	import std.math : abs;
+	auto lastNonzero = data[0];
+	foreach(i; 1..size()){
+	  assert(abs(data[i]) < abs(lastNonzero));
+	  if(abs(data[i]) > 0){
+		lastNonzero = data[i];
+	  }
+	}
   }
   
 private:
@@ -191,6 +219,7 @@ private:
   }
   
 
+  import std.stdio;
   //add 1 more float's worth of precision to this
   //make this a template so it's only compiled when needed
   //otherwise this stack overflows the compiler!
@@ -198,7 +227,6 @@ private:
 	static if(N == 0){
 	  AdaptiveFloat!(FP, 0) ret;
 	  ret.data = new FP[size() +1];
-	  assert(0);
 	} else {
 	  AdaptiveFloat!(FP, N+1) ret; 
 	}
@@ -210,6 +238,8 @@ private:
 
   auto expandToAdd(int M)(const ref AdaptiveFloat!(FP, M) other) const{
 	static if( N==0 || M==0 || ( (M+N) > StaticSizeLimit) ){
+	  //	  writeln("expand add made a dynamic");
+
 	  AdaptiveFloat!(FP, 0) ret;
 	  ret.data = new FP[size() + other.size()];
 	} else {
@@ -225,6 +255,7 @@ private:
 
   auto expandToMultiply(int M)(const ref AdaptiveFloat!(FP, M) other) const{
 	static if(N==0 || M==0 || ((M*N) > StaticSizeLimit) ){
+	  //	  writeln("expand multiply made a dynamic");
 	  AdaptiveFloat!(FP, 0) ret;
 	  ret.data = new FP[size()*other.size()];
 	} else {
@@ -236,6 +267,43 @@ private:
 	return ret;
   }
 
+  //eliminate zeros, and consolidate entries that don't use much precision
+  static if(N == 0){
+	void compress(){
+
+	  import std.conv : to;
+	  //loop down, then up
+	  FP Q = data[0]; //biggest element
+	  auto bottom = 0;
+	  foreach(i; 1..size()){
+		auto exact = AdaptiveFloat!FP(Q) + AdaptiveFloat!FP(data[i]);
+		Q = exact.data[0];
+		if(exact.data[1] != 0){
+		  data[bottom] = Q;
+		  ++bottom;
+		  Q = exact.data[1];
+		}
+	  }
+	  data[bottom] = Q; //this is the smallest nonzero component
+	  //at this point, the beginning of the array should have big stuff
+
+	  //I believe there is a typo in the shewchuck paper...
+	  auto top = size() -1;
+	  for(int i = to!int(bottom -1); i >= 0; --i){
+		auto exact = AdaptiveFloat!FP(data[i]) + AdaptiveFloat!FP(Q);
+		Q = exact.data[0];
+		if(exact.data[1] != 0){
+		  data[top] = exact.data[1]; //shewchuck writes "Q" here, but it should be "q"
+		  top--;
+		}
+	  }
+	  data[top] = Q;
+	  import std.stdio;
+	  data = data[top..$];
+	  //this compresses everything, moving it towards the end
+	}
+  }
+  
   
   void unsafePlusEq(FP f, ulong first, ulong len){
 	auto q = AdaptiveFloat!FP(f);
