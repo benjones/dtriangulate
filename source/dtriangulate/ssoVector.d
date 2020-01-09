@@ -1,25 +1,26 @@
 module dtriangulate.ssoVector;
 
+//we won't call destructors
 struct SSOVector(T, ulong N) if(__traits(isPOD,T)){
-
+    @safe:
 private:
-  byte[N*T.sizeof] localStorage;
+  T[N] localStorage;
 
 public:
   T[] data;  //possible unsafe? Should probably disable some ops?
   alias data this;
   
-  this(ulong n){
-	if(n < N){
-	  T* dataPtr = cast(T*)localStorage.ptr;
-	  data = dataPtr[0..n];
-	} else {
-	  data = new T[n];
-	}
+  @trusted this(ulong n){
+      if(n < N){
+          T* dataPtr = &localStorage[0];
+          data = dataPtr[0..n];
+      } else {
+          data = new T[n];
+      }
   }
   
-  void opOpAssign(string op)(auto ref T t) if(op == "~"){
-	T* dataPtr = cast(T*)localStorage.ptr;
+  @trusted void opOpAssign(string op)(auto ref T t) if(op == "~"){
+	T* dataPtr = localStorage.ptr;
 	if(data.length == 0 || (dataPtr == data.ptr && data.length < N)){
 	  //use the built in array
 	  data = dataPtr[0..(data.length + 1)];
@@ -29,8 +30,7 @@ public:
 	}
   }
 
-  @property
-  ref T back(){ return data[$-1]; }
+  ref T back() return{ return data[$-1]; }
 
   @property bool empty() const { return data.length == 0; }
   
@@ -40,7 +40,7 @@ public:
 }
 
 
-unittest {
+@safe unittest {
   SSOVector!(int, 4) i4;
 
   assert(i4.length == 0);

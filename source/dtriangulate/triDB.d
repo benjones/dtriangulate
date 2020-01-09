@@ -40,7 +40,7 @@ struct Triangle{
   }
 
 
-  ref int opIndex(int i){
+  ref int opIndex(int i) return{
 	return v[i > 2 ? i -3 : i]; //faster than modulo?
   }
   
