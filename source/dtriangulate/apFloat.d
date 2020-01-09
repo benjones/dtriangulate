@@ -1,5 +1,7 @@
 module dtriangulate.apFloat;
 
+import dtriangulate.fma;
+
 //adaptive precision floating point number
 //based on the shewchuck paper
 //N == 0 means "dynamically sized."  Positive int sizes use an internal static array
