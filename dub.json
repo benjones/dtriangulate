@@ -10,6 +10,6 @@
   "copyright": "Copyright © 2017, Ben Jones",
   "license": "MIT",
   "targetType" : "library",
-  "subPackages" : ["statetriangulator"],
+  "subPackages" : ["statetriangulator", "fmabench"],
   "dflags": ["-preview=dip1000"]
 }
