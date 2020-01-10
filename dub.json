@@ -4,12 +4,20 @@
     "Ben Jones"
   ],
   "dependencies": {
-    "gl3n": "~>1.3.1"
+
   },
   "description": "A delaunay triangulator",
   "copyright": "Copyright © 2017, Ben Jones",
   "license": "MIT",
   "targetType" : "library",
   "subPackages" : ["statetriangulator", "fmabench"],
-  "dflags": ["-preview=dip1000"]
+  "dflags": ["-preview=dip1000"],
+  "configurations" : [
+    {
+      "name" : "unittest",
+      "dependencies" : {
+        "gl3n": { "version" : "~>1.3.1" }
+      }
+    }
+  ]
 }

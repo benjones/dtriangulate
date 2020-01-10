@@ -3,8 +3,6 @@ module dtriangulate.tridb;
 public import dtriangulate.ssoVector;
 public import dtriangulate.predicates;
 
-public import gl3n.linalg : vec2;
-
 import std.stdio;
 import std.conv;
 import std.algorithm;

@@ -1291,8 +1291,9 @@ void writeHulls(Vec)(string filename, const Vec[] points, const ref TriDB triDB)
 
 
 unittest{
+  import gl3n.linalg : vec2;
   writeln("\n\n\n2 points test");
-  
+
   vec2[] points = [ vec2(0,0), vec2(1,1) ];
   auto triDB = delaunayTriangulate(points);
   auto tris = triDB.getTriangles();
@@ -1309,6 +1310,7 @@ unittest{
 
 
 unittest{
+  import gl3n.linalg : vec2;
   writeln("\n\n\n\n4 points test");
   vec2[] points  = [vec2(0,0), vec2(1,1), vec2(0.2, 0.9), vec2(0.9, 1)];
   auto triDB = delaunayTriangulate(points);
@@ -1329,6 +1331,7 @@ unittest{
 
 
 /*unittest{
+  import gl3n.linalg : vec2;
   //horizontal/vertical line test
 
   foreach(np ; 2..20){
@@ -1378,6 +1381,7 @@ unittest{
   
 
 unittest {
+  import gl3n.linalg : vec2;
   writeln("clearCavityTest");
   //vec2[] points = [ vec2(0, 0), vec2(1, 1), vec2(.4, .5), vec2(.4, .3), vec2(.6, .7), vec2(.6, .5) ];
   vec2[] points = [vec2(-114.052963256836, 37.592784881592), vec2(-114.052474975586, 37.604774475098), vec2(-114.052474975586, 37.604778289795), vec2(-114.051727294922, 37.745998382568), vec2(-114.051788330078, 37.746250152588), vec2(-114.051666259766, 37.746959686279)];
