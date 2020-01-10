@@ -1,0 +1,12 @@
+{
+  "name": "statetriangulator",
+  "dependencies": {
+    "gl3n": "~>1.3.1",
+    "shplib_d": "~master",
+    "dtriangulate" : { "version" : "*"}
+  },
+  "description": "A delaunay triangulator for state shapefiles",
+  "license": "MIT",
+  "targetType" : "executable",
+  "sourcePaths" : ["."]
+}
