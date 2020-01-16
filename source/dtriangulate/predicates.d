@@ -8,6 +8,17 @@ import std.math : abs;
 
 private auto square(T)(auto ref T t){ return t*t; }
 
+auto orient2DNaive(Vec)(Vec a, Vec b, Vec c){
+  return (a.x - c.x)*(b.y - c.y) - (a.y - c.y)*(b.x - c.x);
+}
+
+auto orient2DFMA(Vec)(Vec a, Vec b, Vec c){
+  import dtriangulate.fma : fma;
+  return fma(a.x, b.y - c.y, c.y*b.x) - fma(a.y, b.x - c.x, c.x*b.y);
+}
+
+size_t extendedO2dCount = 0;
+
 auto orient2D(Vec)( Vec a,  Vec b,  Vec c){
 
   alias FP = Unqual!(typeof(a.x));
@@ -55,7 +66,7 @@ auto orient2D(Vec)( Vec a,  Vec b,  Vec c){
 
 
 auto orient2DAdaptive(Vec)( Vec a,  Vec b,  Vec c){
-
+  ++extendedO2dCount;
   
   alias FP = Unqual!(typeof(a.x));
   auto ax = AdaptiveFloat!FP(a.x);

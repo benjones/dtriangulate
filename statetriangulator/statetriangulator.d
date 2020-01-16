@@ -92,9 +92,9 @@ int main(string[] args){
 	}*/
   writeln("number of unique points: ", points.length);
   //points = points[0..282];
-  foreach( i, ref p; points){
-	writefln("%d: vec2(%0.12f, %0.12f) ", i, p.x, p.y);
-  }
+  //  foreach( i, ref p; points[1412 .. 1419]){
+  //	writefln("%d: vec2(%0.12f, %0.12f) ", i + 1412, p.x, p.y);
+  //    }
 
   
   auto triDB = delaunayTriangulate(points);
@@ -137,7 +137,9 @@ int main(string[] args){
 
   string svgFileRefined = to!string(svgFile[0..$-4] ~ "refined.svg");
   writeSVG(svgFileRefined, points, triDB);
-  
+
+  import dtriangulate.predicates;
+  writeln("adaptive O2ds: ", extendedO2dCount);
   
   /*  
   foreach(i; 0..points.length){

@@ -575,7 +575,9 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 	  //if the x coordinates are equal, ep2's point's y coordinate must be greater thatn ep1's
 	  if(points[ep1.ccwEdge.first].x == points[ep2.cwEdge.first].x){
 		zipByX = false;
-		writefln("swapped zipByX from %s  to %s", ByX, zipByX);
+        //		writefln("swapped zipByX from %s  to %s", ByX, zipByX);
+        //        writeln("edges considered, ep1.ccw: ", ep1.ccwEdge, " ep2.cwEdge ", ep2.cwEdge);
+        //        writeln(indices);
 		ldi = ep2.cwEdge;
 		rdi = ep1.ccwEdge;
 		//all the points must be collinear!  Merge by Y!
@@ -589,9 +591,12 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 	  if(points[ep1.cwEdge.second].y == points[ep2.ccwEdge.first].y){
 		//collinear, merge by X
 		zipByX = true;
-		writefln("swapped zipByX from %s to %s", ByX, zipByX);
+        //		writefln("swapped zipByX from %s to %s", ByX, zipByX);
+        //        writeln("edges considered, ep1.cw: ", ep1.cwEdge, " ep2.ccwEdge ", ep2.ccwEdge);
+        //        writeln(indices);
 		ldi = ep1.cwEdge;
 		rdi = ep2.ccwEdge;
+        //        writeln("new ldi: ", ldi, " new rdi: ", rdi);
 	  } else {
 		ldi = ep2.cwEdge;
 		rdi = ep1.ccwEdge;
@@ -607,6 +612,23 @@ EdgePair delaunayRecurse(Vec, bool ByX)(ref TriDB triDB, const  Vec[] points, in
 
 	//	writefln("about to zip hulls with %d total points", indices.length);
 	auto retEdgePair = zipHulls!(Vec)(triDB, points, ldi, rdi, zipByX);
+
+    if(zipByX != ByX){
+      static if(ByX){
+        retEdgePair.cwEdge = hullMinYCW!Vec(triDB, points, retEdgePair.cwEdge);
+        retEdgePair.ccwEdge = hullMaxYCCW!Vec(triDB, points, retEdgePair.ccwEdge);
+      } else {
+        retEdgePair.cwEdge = hullMaxXCW!Vec(triDB, points, retEdgePair.cwEdge);
+        retEdgePair.ccwEdge = hullMinXCCW!Vec(triDB, points, retEdgePair.ccwEdge);
+      }
+      
+      //      writeln("edges after zipping: ", retEdgePair);
+      //      foreach(x; indices){
+      //        writeln("points for: ", x);
+      //        triDB.dumpVertex(x);
+      //        writeln();
+      //      }
+    }
 
 	//	writeHulls(to!string("hulls" ~ to!string(svgCount) ~ ".svg"), points, triDB); 
 	//	writeSVG(to!string("step" ~ to!string(svgCount++) ~ ".svg"), points, triDB);
@@ -649,6 +671,7 @@ void makeConstrainedDelaunay(Vec)(const Vec[] points, ref TriDB triDB, bool[Pair
   }
 }
 
+//size_t cosIndex = 0;
 void cutOffScraps(Vec)(const Vec[] points, ref TriDB triDB, bool[Pair] segmentSet){
 
   
@@ -691,21 +714,28 @@ void cutOffScraps(Vec)(const Vec[] points, ref TriDB triDB, bool[Pair] segmentSe
 	  } else { //all reals, easy case
 		if(triDB.adjacentExists(w, v)){
 		  toDelete ~= Triangle(w, v, triDB.adjacent(w, v));
-		}
+          //          writeln("adding ", toDelete[$-1]);
+		} //else {
+        //          writeln("no triangle across ", w, " ", v);
+        //        }
 	  }
 	}
-	triDB.deleteTriangle(tri);
-	
+    //    writeln("deleting ", tri);
+    triDB.deleteTriangle(tri);
+    //    writeSVG("cos" ~ to!string(cosIndex++) ~ ".svg", points, triDB);
+
   }
   
 }
 
 
 
+//size_t addSegSVGCount = 0;
 void addSegment(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
   auto holes = clearCavity(points, triDB, s);
   fillCavity(points, triDB, holes.left);
   fillCavity(points, triDB, holes.right);
+  //  writeSVG("addSeg" ~ to!string(addSegSVGCount++) ~ ".svg", points, triDB);
 }
 
 
@@ -717,6 +747,13 @@ struct ClearCavityList{ int[] left; int[] right;}
 ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 
   //  writeln("clearing cavity for segment ", s);
+
+  //  writeln("triangles connected to ", s.first);
+  //  triDB.dumpVertex(s.first);
+  //  writeln();
+  //  writeln("triangles connected to ", s.second);
+  //  triDB.dumpVertex(s.second);
+  //  writeln();
   
   int[] leftPoints = [s.second];
   int[] rightPoints = [s.first];
@@ -727,7 +764,7 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
   auto u = s.first;
   auto vw = triDB.adjacentRealTriangle(u);
   struct Segment{ Vec first, second; }
-
+  //  writeln("vw: ", vw);
   //find the triangle at s that contains the segment
   while(!segmentsCross(Segment(s1, s2),
 					   Segment(points[vw.first], points[vw.second]))){
@@ -751,7 +788,7 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 
   while(adj != s.second){
 	int newAdj;
-	//	writeln("in while loop, about to delete: ", vw.second, ", ", vw.first, ", ", adj);
+    //    writeln("in while loop, about to delete: ", vw.second, ", ", vw.first, ", ", adj);
 	triDB.deleteTriangle(Triangle(vw.second, vw.first, adj));
 
 	if(leftOf(points[adj], s1, s2)){
@@ -780,22 +817,24 @@ ClearCavityList clearCavity(Vec)(const Vec[] points, ref TriDB triDB, Pair s){
 
 void cavityInsertVertex(Vec)(const Vec[] points, ref TriDB triDB, int[] poly, int u, int v, int w){
 
+  //  writeln("cavity insert: ", poly, " u: ", u, " v: ", v, " w: ", w);
   if(triDB.adjacentExists(w,v)){
 
 	auto x = triDB.adjacent(w, v);
 	if(orient2D(points[poly[u]], points[poly[v]], points[poly[w]]) > 0 &&
-	   !inCircle(points[poly[u]], points[poly[v]], points[poly[w]], points[poly[x]])){
+	   !isInCircle(points[poly[u]], points[poly[v]], points[poly[w]], points[poly[x]])){
 	  //uvw is constrained delaunay because the point on the other side is far enough away
-	  //	  writeln("adding ", Triangle(u, v, w));
+      //      writeln("if if adding ", Triangle(u, v, w));
 	  triDB.addTriangle(Triangle(u, v, w));
 	} else {
+      //      writeln("deleting ", Triangle(w, v, x));
 	  triDB.deleteTriangle(Triangle(w, v, x));
 	  cavityInsertVertex(points, triDB, poly, u, v, x);
 	  cavityInsertVertex(points, triDB, poly, u, x, w);
 	}
   } else {
 	//uvw is constrained delaunay, because there's nothing on the other side of vw
-	//	writeln("adding ", Triangle(u, v, w));
+    //    writeln("else adding ", Triangle(u, v, w));
 	triDB.addTriangle(Triangle(u, v, w));
   }
   
@@ -810,6 +849,7 @@ void fillCavity(Vec)(const Vec[] points, ref TriDB triDB, int[] poly){
   import std.random;
   import std.algorithm;
 
+  //  writeln("filling cavity, ", poly);
   
   auto first = poly[0];
   auto last = poly[$-1];
@@ -824,32 +864,37 @@ void fillCavity(Vec)(const Vec[] points, ref TriDB triDB, int[] poly){
   }
 
 
-  auto o2ds = poly.map!(delegate(int i){
-	  return orient2D(points[first], points[last], points[i]);
-	}).array;
+  auto o2ds = poly.map!( i => orient2D(points[first], points[i], points[last])).array;
 
-  foreach(i; iota(perm.length -1, -1, -1)){
+  foreach(i; iota(perm.length -1, 0, -1)){
+    //    writeln("looking at index ", i, " perm[i]: ", perm[i]);
 	while(o2ds[perm[i]] < o2ds[prev[perm[i]]]
 		  && o2ds[perm[i]] < o2ds[next[perm[i]]]){
-	  auto j = uniform(0, -1);
+	  auto j = uniform(0, i); //[0, i -1]
+      //      writeln("swapping ", i, " with ", j);
 	  swap(perm[i], perm[j]);
 	}
+    //    writeln("removing ", i, " from the polygon");
 	next[prev[perm[i]]] = next[perm[i]];
 	prev[next[perm[i]]] = prev[perm[i]];
   }
 
+  //  writeln("perm: ", perm);
+  //  foreach(i; 0 .. poly.length){
+  //    writeln(i, " prev ", prev[i], " next ", next[i]);
+  //  }
+
+  
   TriDB cavityTriangles = TriDB(poly.length);
 
   //  auto cavityPoints = poly.map!(i => Vec(points[i])).array;
+
+  //  writeln("adding ", Triangle(0, perm[0], to!int(poly.length -1)));
   
-  cavityTriangles.addTriangle(Triangle(0, perm[0], to!int(poly.length -1)));
-  
-  foreach(i; 1..perm.length){
-	cavityInsertVertex(points, cavityTriangles, poly, perm[i], next[perm[i]], prev[perm[i]]);
+  foreach(pi; perm){
+	cavityInsertVertex(points, cavityTriangles, poly, pi, next[pi], prev[pi]);
   }
 
-  
-  
   triDB.addTriangulatedPolygon(cavityTriangles, poly);
 }
 
@@ -1026,6 +1071,7 @@ int boyerWatsonSplitEdge(Vec)(ref Vec[] points, ref TriDB triDB, ref bool[Pair] 
   return newIndex;
 }
 
+//int splitSVGIndex = 0;
 
 int boyerWatsonSplitTriangle(Vec, Heap, FP)(ref Vec[] points, ref TriDB triDB, ref bool[Pair] segmentSet,
 											ref Heap segmentHeap, Triangle triToSplit,
@@ -1085,6 +1131,7 @@ int boyerWatsonSplitTriangle(Vec, Heap, FP)(ref Vec[] points, ref TriDB triDB, r
 		  
 		} else {
 		  //cross the segment
+          //          writeln("deleting triangle: ", tri, " crossing segment: ", e);
 		  auto other = triDB.adjacent(v, u);
 		  auto neighbor = canonical(Triangle(v, u, other));
 		  if(! (neighbor in toDelete)){
@@ -1127,6 +1174,10 @@ int boyerWatsonSplitTriangle(Vec, Heap, FP)(ref Vec[] points, ref TriDB triDB, r
 	foreach(seg; cavityEdges.byKey()){
 	  triDB.addTriangle(Triangle(seg.first, seg.second, newIndex));
 	}
+
+    //    writeSVG("bwst" ~ to!string(splitSVGIndex++) ~ ".svg", points, triDB);
+    //    writeln();
+    
 	return newIndex;
   }
 
@@ -1143,7 +1194,7 @@ Vec[] prepareSVG(Vec)(ref File f, const Vec[] points, const int[] activePoints){
   
   //activePoints.sort().uniq();
   if(activePoints.empty){
-	f.writeln("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"800\" ></svg>");
+	f.writeln("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1200\" height=\"1200\" ></svg>");
 	return [];
   }
   //using a delecate to store a copy of the points, not a reference
@@ -1162,20 +1213,20 @@ Vec[] prepareSVG(Vec)(ref File f, const Vec[] points, const int[] activePoints){
   size = maxP - minP;
   auto maxDim = max(size.x, size.y);
 
-  auto radius = max(size.x, size.y)/200.0f;
+  auto radius = max(size.x, size.y)/400.0f;
 
   auto aspectRatio = size.y/size.x;
 
-  auto width = 1600;
-  auto height = 1600;//*aspectRatio;
+  auto width = 2000;
+  auto height = 2000;//*aspectRatio;
 
 
-  Vec[] scaledPoints = points.map!( a => (a - center)*(10/maxDim))
+  Vec[] scaledPoints = points.map!( a => (a - center)*(20/maxDim))
 	//	.map!(a => Vec(a.x*2.5, a.y))
 	.array;
   
   f.write("<svg xmlns=\"http://www.w3.org/2000/svg\"  ");
-  f.writefln("width=\"%d\" height=\"%d\" viewBox=\"-5 -5 10 10\" >", width, height);
+  f.writefln("width=\"%d\" height=\"%d\" viewBox=\"-10 -10 20 20\" >", width, height);
   
   f.writeln("<g transform=\"scale(1, -1)\" >");
 
@@ -1220,7 +1271,7 @@ void writeSVG(Vec)(string filename, const Vec[] points, const ref TriDB triDB){
 	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .01);
 	f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
 				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"red\" >%d</text></g>",
-				p.x, p.y, .02, i);
+				p.x, p.y, .025, i);
 
   }
   f.writeln("</g>\n</svg>");
