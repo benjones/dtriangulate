@@ -24,24 +24,30 @@ void main(){
   static void runBenchmark(){
     size_t naiveFailures = 0;
     size_t fmaFailures = 0;
-
-    float min = 1.1f, max = 2.2f;
-    Vecs vecs = Vecs(Vec(min, min), Vec(max, max), Vec(min, min));
-    float curr = min;
+    size_t fma2Failures = 0;
     
-    //foreach(iter; 0..1000000000){
-    size_t iter = 0;
-    while(curr <= max){
+    //float min = 1.1f, max = 2.2f;
+    //Vecs vecs = Vecs(Vec(min, min), Vec(max, max), Vec(min, min));
+    //float curr = min;
+
+    auto trials = 1000000000;
+    foreach(iter; 0.. trials){
+    //size_t iter = 0;
+    //while(curr <= max){
       //      const vecs = makeVecs(iter);
       float scale = iter % 2 == 0 ? -1.0f : 1.0f;
-      vecs.c = Vec(curr + scale*float.epsilon, curr);
-      curr = nextUp(curr);
-      ++iter;
+      //vecs.c = Vec(curr + scale*float.epsilon, curr);
+      
+      //curr = nextUp(curr);
+      //++iter;
+      auto vecs = Vecs(rv(), rv(), rv());
+      
       with(vecs){
         auto exact = orient2D(a, b, c);
         auto naive = orient2DNaive(a, b, c);
         auto fma = orient2DFMA(a, b, c);
-        
+        auto fma2 = orient2DFMA2(a, b, c);
+          
         if(sgn(exact) != sgn(naive)){
           ++naiveFailures;
           writeln("Naive Failure: ", a, b, c, " true: ", exact, " naive: ", naive);
@@ -49,17 +55,21 @@ void main(){
         
         if(sgn(exact) != sgn(fma)){
           ++fmaFailures;
-          //writeln("FMA Failure: ", a, b, c, " true: ", exact, " fma: ", fma);
+          writeln("FMA Failure: ", a, b, c, " true: ", exact, " fma: ", fma);
+        }
+        if(sgn(exact) != sgn(fma2)){
+          ++fma2Failures;
+          writeln("FMA2 Failure: ", a, b, c, " true: ", exact, " fma2: ", fma2);
         }
       }
       
       //orient2DNaive, orient2DFMA
     }
-    writeln("total failures naive: ", naiveFailures, " FMA: ", fmaFailures, " in ", iter, " iters");
+    writeln("total failures naive: ", naiveFailures, " FMA: ", fmaFailures, " FMA2: ", fma2Failures, " in ", trials, " iters");
   }
 
-  //runBenchmark();
-  triangulateBenchmark();
+  runBenchmark();
+  //triangulateBenchmark();
 
 }
 

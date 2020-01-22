@@ -5,6 +5,7 @@ public import dtriangulate.apFloat;
 import std.traits : Unqual;
 import std.math : abs;
 
+@safe:
 
 private auto square(T)(auto ref T t){ return t*t; }
 
@@ -15,6 +16,11 @@ auto orient2DNaive(Vec)(Vec a, Vec b, Vec c){
 auto orient2DFMA(Vec)(Vec a, Vec b, Vec c){
   import dtriangulate.fma : fma;
   return fma(a.x, b.y - c.y, c.y*b.x) - fma(a.y, b.x - c.x, c.x*b.y);
+}
+
+auto orient2DFMA2(Vec)(Vec a, Vec b, Vec c){
+  import dtriangulate.fma : fma;
+  return fma(a.x - c.x, b.y - c.y, (c.y - a.y)*(b.x - c.x));
 }
 
 size_t extendedO2dCount = 0;
