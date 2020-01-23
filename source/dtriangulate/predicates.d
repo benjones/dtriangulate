@@ -93,6 +93,38 @@ auto orient2DAdaptive(Vec)( Vec a,  Vec b,  Vec c){
   return (axby - aybx).asReal();
 }
 
+auto inCircleFMA(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
+  import dtriangulate.fma : fma, fms;
+  alias FP = Unqual!(typeof(a.x));
+  FP adx = a.x - d.x;
+  FP ady = a.y - d.y;
+  FP bdx = b.x - d.x;
+  FP bdy = b.y - d.y;
+  FP cdx = c.x - d.x;
+  FP cdy = c.y - d.y;
+
+  return fma(fma(adx, adx, ady*ady), fms(bdx, cdy, bdy*cdx),
+             fma(fma(bdx, bdx, bdy*bdy), fms(ady, cdx, adx*cdy),
+                 fma(cdx, cdx, cdy*cdy)*fms(adx, bdy, ady*bdx)));
+  
+}
+
+auto inCircleNaive(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
+  alias FP = Unqual!(typeof(a.x));
+  FP adx = a.x - d.x;
+  FP ady = a.y - d.y;
+  FP bdx = b.x - d.x;
+  FP bdy = b.y - d.y;
+  FP cdx = c.x - d.x;
+  FP cdy = c.y - d.y;
+
+  return (adx*adx + ady*ady)*(bdx*cdy - bdy*cdx) +
+    (bdx*bdx + bdy*bdy)*(ady*cdx - adx*cdy) +
+    (cdx*cdx + cdy*cdy)*(adx*bdy - ady*bdx);
+  
+}
+
+
 bool isInCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
   return inCircle(a, b, c, d) > 0;
 }
@@ -138,8 +170,9 @@ auto inCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec 
 	return inCircleAdaptive(a, b, c, d);
   }
 }
-
+int icaCount = 0;
 auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
+  ++icaCount;
   alias FP = Unqual!(typeof(a.x));
   alias AF1 = AdaptiveFloat!(FP, 1);
   AF1 ax = AF1(a.x);

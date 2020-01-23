@@ -68,9 +68,12 @@ void main(){
     writeln("total failures naive: ", naiveFailures, " FMA: ", fmaFailures, " FMA2: ", fma2Failures, " in ", trials, " iters");
   }
 
-  runBenchmark();
+  //runBenchmark();
   //triangulateBenchmark();
+  inTriBenchmark();
 
+
+  
 }
 
 void triangulateBenchmark(){
@@ -93,4 +96,50 @@ void triangulateBenchmark(){
 
   auto db = delaunayTriangulate(points);
   writeln("Made ", db.getTriangles.length, " triangles with " , extendedO2dCount, " adaptive calcs\n");
+}
+
+
+void inTriBenchmark(){
+  import std.stdio;
+  import std.random : uniform;
+  import std.math : sgn, nextUp;
+  
+  struct Vec{ float x, y; }
+
+  static Vec rv(){
+    return Vec(uniform(-1000.0f, 1000.0f), uniform(-1000.0f, 1000.0f));
+  }
+
+  struct Vecs{ Vec a, b, c, d; }
+
+  size_t naiveFailures = 0;
+  size_t fmaFailures = 0;
+  size_t bothFailures;
+  
+  auto trials = 1000000000;
+  foreach(iter; 0.. trials){
+    
+    auto vecs = Vecs(rv(), rv(), rv(), rv());
+    
+    with(vecs){
+      auto exact = inCircle(a, b, c, d);
+      auto naive = inCircleNaive(a, b, c, d);
+      auto fma = inCircleFMA(a, b, c, d);
+
+      if(sgn(exact) != sgn(naive) && sgn(exact) != sgn(fma)){
+        ++bothFailures;
+        writeln("Both Failure: ", a, b, c, d,  " true: ", exact, " naive: ", naive, " fma: ", fma);
+      } else if(sgn(exact) != sgn(naive)){
+        ++naiveFailures;
+        writeln("Naive Failure: ", a, b, c, d,  " true: ", exact, " naive: ", naive, " fma: ", fma);
+      } else if(sgn(exact) != sgn(fma)){
+        ++fmaFailures;
+        writeln("FMA Failure: ", a, b, c, d, " true: ", exact, " fma: ", fma, " naive: ", naive);
+      }
+    }
+    
+    //orient2DNaive, orient2DFMA
+  }
+  writeln("total failures naive: ", naiveFailures, " FMA: ", fmaFailures, " both: ", bothFailures, " in ", trials, " iters");
+  writeln("num adaptiveCalls: ", icaCount);
 }

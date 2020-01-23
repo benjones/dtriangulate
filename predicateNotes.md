@@ -94,7 +94,7 @@ g = bx - cx
 D = ax(-) cy   -> d = D(1 +- eps)
 Same for E, F, G
 
-h = fg; H = G (*) G = FG(1 +- eps)
+h = fg; H = F (*) G = FG(1 +- eps)
 H = FG +- eps|H|
 
 h = (F +- eps|F|)(G +- eps|G|)
@@ -145,3 +145,91 @@ In practice, I haven't seen a case where this version is incorrect, but the naiv
 
 Since D, E, F, and G will be computed, we could compute bothe FMA(D, E, FG) and (F, G, DE).  
 The error bound will be a function of either FG or DE, so pick the one with smaller absolute value.
+
+
+## InCircle
+
+Starting with the top-level partial expansion of the determinant, I replaced * and + with FMA recursively:
+
+```
+adx = ax - dx; 
+ady = ay - dy; 
+bdx = bx - dx;
+
+
+r(esult) = | adx  ady  (adx*adx + ady*ady) |
+           | bdx  bdy  (bdx*bdx + bdy*bdy) |
+           | cdx  cdy  (cdx*cdx + cdy*cdy) |
+
+```
+
+Expanding in terms of cofactors, using the 3rd column:
+
+```
+r = (adx^2 + ady^2)(bdxcdy - bdycdx) + (bdx^2 + bdy^2)(adycdx - adxcdy) + (cdx^2 + cdy^2)(adxbdy - adybdx)
+
+for each sum of squares term:
+sos = fma(_dx, _dx, _dy_dy)
+and the cofactors:
+_cf = fms(_x, _y, _x_y) #(note the use of FMS, not FMA)
+```
+
+we can also use FMA on the 3 terms of th ethe final result giving:
+
+```
+r = fma(fma(adx, adx, ady*ady),
+        fms(bdx, cdy, bdy*cdx),
+        fma(fma(bdx, bdx, bdy*bdy), fms(ady, cdx, adx*cdy),
+            fma(cdx, cdx, cdy*cdy)*fms(adx, bdy, ady*bdx)))
+```
+
+For the error analysis:
+
+```
+adx = ax - dx;  ADX = ax (-) dx;  ADX = (ax - dx)(1 +- eps); adx = ADX( 1 +- eps)
+similary for ?d? (for ? = a,b,c and x,y)
+
+f = ady*ady;  F = (ADY*ADY) +- eps|F|;  ADY*ADY = F(1 +- eps)
+f = (ADY +- eps)^2 = ADY^2 +- (2eps + eps^2)|ADY^2|
+// sub ADY^2 = F(1 +- eps)
+f = F +- eps|F| +- 2eps|(F +- eps|F|| +- eps^2|F +- eps|F||
+f = F +- (e3ps + 3eps^2 + eps^3)|F|
+
+g = (adx*adx + f)  
+G = ADX^2 + F +- eps|G|
+
+g = (ADX(1 +- eps))^2 + F + (3eps + 3eps^2 + eps^3)|F|
+g = ADX^2 + F + (2eps + eps^2)(ADX^2) + (3eps + 3eps^2 + eps^3)|F|
+//ADX^2 + F = G +- eps|G|
+g = G +- eps|G| + (2eps + eps^2)(ADX^2 + |F|) + (eps + eps^2 + eps^3)|F|
+g = G +- eps|G| + (2eps + eps^2)(|ADX^2 + F| + 2|F|) + (eps + eps^2 + eps^3)|F|
+g = G +- eps|G| + (2eps + eps^2)(|G| + 2|F|) + (eps + eps^2 + eps^3)|F|
+g = G +- (3eps + 3eps^2 + eps^3)|G| + (5eps + 3eps^2 + eps^3)|F|
+
+```
+
+Similarly:
+
+```
+h = bdy^2
+j = fma(bdx, bdx, h);
+
+j = J +- (3eps + 3eps^2 + eps^3)|J| + (5eps + 3eps^2 + eps^3)|H|
+
+and 
+
+l = cdy^2; m = fma(cdx, cdx, l);
+m = M +- (3eps + 3eps^2 + eps^3)|M| + (5eps + 3eps^2 + eps^3)|L|
+```
+
+Now onto the cofactors:
+
+```
+n = bdx*cdy
+p = bdy*cdx
+q = n - p
+
+
+
+
+```
