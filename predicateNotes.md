@@ -225,11 +225,17 @@ m = M +- (3eps + 3eps^2 + eps^3)|M| + (5eps + 3eps^2 + eps^3)|L|
 Now onto the cofactors:
 
 ```
-n = bdx*cdy
-p = bdy*cdx
-q = n - p
+The cofactors are identical to Orient2D:
 
+o = bdy*cdx;
+n = bdx*cdy - o == fma(bdx, cdy, o);
 
-
+n = N +- 3(eps + eps^2)|N| +- (5eps + reps^2 + eps^3)|O|
 
 ```
+
+similarly for the other cofactors
+
+
+
+
