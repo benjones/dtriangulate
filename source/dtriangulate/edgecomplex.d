@@ -24,31 +24,32 @@ struct HalfEdge {
 struct EdgeComplex{
   import std.array;
   private HalfEdge[] edges; //TODO use appender if this is too slow
+  private size_t[] freeEdgeList; //indices of entries in edges that are unused
 
 
   ///Create a new edge from a to b which is 2 half edges.  Return index of the half-edge from a to b
   size_t newEdge(size_t a, size_t b){
-    const e1Index = edges.length;
-    const e2Index = e1Index + 1;
+    const e1Index = allocEdge();
+    const e2Index = allocEdge();
 
     HalfEdge e1 = {a, b, e2Index, e2Index};
     HalfEdge e2 = {b, a, e1Index, e1Index};
 
-    edges ~= e1;
-    edges ~= e2;
+    edges[e1Index] = e1;
+    edges[e2Index] = e2;
     return e1Index;
   }
 
   size_t newDanglingEdge(size_t e1Index, size_t newVertexIndex){
-    const ret = edges.length;
-    const retSym = ret + 1;
+    const ret = allocEdge();
+    const retSym = allocEdge();
 
     const eStart = edges[e1Index];
     HalfEdge newEdge = {eStart.dest, newVertexIndex, retSym, retSym};
     HalfEdge newEdgeSym = {newVertexIndex, eStart.dest, eStart.nextL, ret};
 
-    edges ~= newEdge;
-    edges ~= newEdgeSym;
+    edges[ret] = newEdge;
+    edges[retSym] = newEdgeSym;
 
     edges[e1Index].nextL = ret;
 
@@ -62,20 +63,28 @@ struct EdgeComplex{
     auto e1 = edges[e1Index];
     auto e2 = edges[e2Index];
 
-    const newIndex1 = edges.length;
-    const newIndex2 = newIndex1 + 1;
+    const newIndex1 = allocEdge();
+    const newIndex2 = allocEdge();
 
     HalfEdge newE1 = {e1.dest, e2.org, e2Index, newIndex2};
     HalfEdge newE2 = {e2.org, e1.dest, e1.sym, newIndex1};
 
-    edges ~= newE1;
-    edges ~= newE2;
+    edges[newIndex1] = newE1;
+    edges[newIndex2] = newE2;
 
     //clean nLeft for affected edges
     edges[edges[e1.nextL].sym].nextL = newIndex1;
     edges[prevL(e2Index)].nextL = newIndex2;
 
     return newIndex1;
+  }
+
+  //CCW a -> b -> c
+  size_t newTriangle(size_t a, size_t b, size_t c){
+    auto e1 = newEdge(a, b);
+    auto e2 = newDanglingEdge(e1, c);
+    newEdgeBetween(e2, e1);
+    return e1;
   }
 
 
@@ -102,6 +111,18 @@ struct EdgeComplex{
     }
     return ret;
   }
+
+  private size_t allocEdge(){
+    import std.range: empty, popBack, back;
+    if(!freeEdgeList.empty){
+      auto ret = freeEdgeList.back;
+      freeEdgeList.popBack();
+      return ret;
+    }
+    auto ret = edges.length;
+    edges ~= HalfEdge.init;
+    return ret;
+  }
 }
 
 
@@ -114,6 +135,8 @@ unittest {
   auto e1 = ec.newEdge(10, 11);
   auto e2 = ec.newDanglingEdge(e1, 12);
   auto e3 = ec.newEdgeBetween(e2, e1);
+
+  ec.newTriangle(13, 14, 15);
 
   writeln("EDGECOMPLEX TEST!!!");
   writeln(ec);

@@ -16,7 +16,7 @@
     {
       "name" : "unittest",
       "dependencies" : {
-        "gl3n": { "version" : "~>1.3.1" }
+        "gl3n": { "version" : "~>1.4.1" }
       }
     }
   ]
