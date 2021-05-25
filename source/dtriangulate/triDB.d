@@ -12,7 +12,7 @@ struct Pair{
   bool opEquals(Pair rhs) const{
 	return first == rhs.first && second == rhs.second;
   }
-  
+
   size_t toHash() const @safe nothrow{
 	size_t ret = cast(size_t)(first);
 	ret <<= 32;
@@ -41,11 +41,11 @@ struct Triangle{
   ref int opIndex(int i) return{
 	return v[i > 2 ? i -3 : i]; //faster than modulo?
   }
-  
+
   int opIndex(int i) const{
 	return v[i > 2 ? i -3 : i]; //faster than modulo?
   }
-	  
+
   bool opEquals(Triangle rhs) const{
 	return v[0] == rhs.v[0] && v[1] == rhs.v[1] && v[2] == rhs.v[2];
   }
@@ -73,7 +73,7 @@ struct Triangle{
 	}
 	return to!string(ret ~ " )");
   }
-  
+
   private int[3] v;
 }
 
@@ -104,14 +104,14 @@ unittest {
   assert(canonical(t4) == t4);
   assert(canonical(t5) == t4);
   assert(canonical(t6) == t4);
-  
+
 }
 
 auto minAngleDegrees(Vec)(Triangle tri, const ref Vec[] points){
   import std.traits : Unqual;
   import std.math: acos, PI;
   import std.algorithm: clamp;
-  
+
   alias FP = Unqual!(typeof(points[0].x));
   FP ret = 180;
   foreach(i; 0..3){
@@ -127,7 +127,7 @@ auto minAngleDegrees(Vec)(Triangle tri, const ref Vec[] points){
 	ret = min(ret, angle);
   }
   return ret*180/PI;
-  
+
 }
 
 auto area(Vec)(Triangle tri, const ref Vec[] points){
@@ -149,7 +149,7 @@ Vec getCircumcenter(Vec)(Triangle tri, const ref Vec[] points){
   auto c = points[tri[2]];
 
   const auto d = 2*(a.x*(b.y - c.y) + b.x*(c.y - a.y) + c.x*(a.y - b.y));
-  
+
   return Vec (
 			  (a.magnitude_squared()*(b.y - c.y) +
 			   b.magnitude_squared()*(c.y - a.y) +
@@ -178,7 +178,7 @@ struct TriDB{
   }
 
   //ghosts will have their MSB set to 1
-  
+
   public static bool isGhost(int i){
 	return i < 0; //is MSB set?
   }
@@ -196,7 +196,7 @@ struct TriDB{
   }
 
 
-  
+
   void addTriangle(Triangle t){
 	foreach(i; 0..3){
 	  if(!isGhost(t[i])){ //don't add ghost edges
@@ -221,7 +221,7 @@ struct TriDB{
 			break;
 		  }
 		}
-	  } 
+	  }
 	}
 	assert(realCount == deletedCount);
   }
@@ -278,7 +278,7 @@ struct TriDB{
   }
 
 
-  //todo, return a range instead of allocating an array  
+  //todo, return a range instead of allocating an array
   Triangle[] getTriangles() const{
 	Triangle[] ret;
 	foreach(size_t i, const ref svec; triangles){
@@ -302,7 +302,7 @@ struct TriDB{
   }
 
   void dumpVertex(int i) const{
-	
+
 	auto set = triangles[i];
 	foreach(pr ; set){
 	  write("( ");
@@ -317,11 +317,11 @@ struct TriDB{
 	  } else {
 		write(pr.second);
 	  }
-	  
+
 	  write(" ) ");
-	}	  
+	}
   }
-  
+
   void dump() const {
 	import std.stdio;
 	writeln("normal entries");
@@ -332,7 +332,7 @@ struct TriDB{
 	  }
 	  writeln();
 	}
-	
+
   }
 
 
@@ -373,7 +373,7 @@ struct TriDB{
   void addPoint(){
 	triangles ~= typeof(triangles[0])();
   }
-  
+
 private:
 
   SSOVector!(Pair, 9)[] triangles;
@@ -385,7 +385,101 @@ private:
   //in a CW ordering
 
   // Intuition:  a Ghost triangle is really 2 external edges!!
-  
+
 
 }
 
+
+
+void writeSVG(Vec)(string filename, const Vec[] points, const ref TriDB triDB){
+  import std.array;
+  import std.stdio : File;
+  import std.algorithm;
+
+  import dtriangulate.svg;
+
+
+  writefln("dumping %s", filename);
+  File f = File(filename, "w");
+  auto activePoints = triDB.getActiveVertices();
+  auto scaledPoints = prepareSVG(f, points, activePoints);
+  Triangle[] tris = triDB.getTriangles();
+
+  foreach(const ref tri ; tris){
+	if(!TriDB.isGhost(tri[0])  && !TriDB.isGhost(tri[1]) && !TriDB.isGhost(tri[2])){
+	  foreach(i; [0,1,2]){
+        svgLine(f, scaledPoints[tri[i]],scaledPoints[tri[i + 1]], .0002);
+	  }
+	} else {
+	  auto p1 = TriDB.isGhost(tri[0]) ? tri[1] : tri[0];
+	  auto p2 = TriDB.isGhost(tri[2]) ? tri[1] : tri[2];
+      svgLine(f, scaledPoints[p1], scaledPoints[p2], .002, true);
+	}
+  }
+
+  foreach(i ; activePoints){
+	const auto p = scaledPoints[i];
+	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .01);
+	f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
+				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"red\" >%d</text></g>",
+				p.x, p.y, .025, i);
+
+  }
+  f.writeln("</g>\n</svg>");
+}
+
+void writeHulls(Vec)(string filename, const Vec[] points, const ref TriDB triDB){
+  enum colors = ["red", "green", "blue", "purple", "orange", "brown", "pink", "gold", "crimson"];
+
+  writefln("dumping %s", filename);
+  File f = File(filename, "w");
+  auto activePoints = triDB.getActiveVertices();
+  auto scaledPoints = prepareSVG(f, points, activePoints);
+
+  bool[int] neededPoints;
+  foreach(i ; activePoints){ neededPoints[i] = true;}
+
+  int color = 0;
+  foreach(i; activePoints){
+	if(!neededPoints[i]){ continue; }
+	int cwOfI = i;
+	foreach(vw; triDB.getTriangles(i)){
+	  if(!TriDB.isGhost(vw.first) && TriDB.isGhost(vw.second)){
+		cwOfI = vw.first;
+		break;
+	  }
+	}
+	//not on the hull, skip this
+	if(cwOfI == i){ continue; }
+	CWEdge e = CWEdge(Pair(i, cwOfI));
+	CWEdge start = e;
+	do{
+      svgLine(f, scaledPoints[e.first], scaledPoints[e.second], .001, false, colors[color % colors.length]);
+	  neededPoints[e.first] = false;
+	  e = hullAdvance(triDB, e);
+
+	  auto p = scaledPoints[e.first];
+	  f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .002);
+	  f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
+				  "<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"%s\" >%d</text></g>",
+				  p.x, p.y, .015, colors[color % colors.length], e.first);
+
+
+
+	}while(e != start);
+	++color;
+  }
+
+  /*foreach(i ; activePoints){
+	const auto p = scaledPoints[i];
+	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .002);
+	f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
+				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"red\" >%d</text></g>",
+				p.x, p.y, .015, i);
+
+				}*/
+
+
+  writefln("hulls this frame: %d" , color);
+  f.writeln("</g>\n</svg>");
+}
