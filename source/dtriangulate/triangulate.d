@@ -1,7 +1,6 @@
 module dtriangulate.triangulate;
 public import dtriangulate.tridb;
 
-import dtriangulate.svg;
 
 import std.typecons;
 import std.stdio;

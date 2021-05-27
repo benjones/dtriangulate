@@ -126,6 +126,35 @@ struct EdgeComplex{
 }
 
 
+void writeSVG(Vec)(string filename, const Vec[] points, const ref EdgeComplex ec){
+  writefln("dumping %s", filename);
+  auto activePoints = triDB.getActiveVertices();
+  auto scaledPoints = prepareSVG(f, points, activePoints);
+
+  bool[size_t] freeEdges;
+  foreach(fe; ec.freeEdgeList){
+    freeEdges[fe] = true;
+  }
+
+  int[] activePoints;
+  foreach(edge; ec.edges){
+    if(edge.orig < edge.dest){
+      activePoints ~= edge.orig;
+      activePoints ~= edge.dest;
+    }
+  }
+  auto f = File(filename, "w");
+  auto scaledPoints = prepareSvg(f, points, activePoints);
+  foreach(edge; ec.edges){
+    if(edge.orig < edge.dest){
+      svgLine(f, scaledPoints[ec.orig], scaledPoints[ec.dest], 0.002);
+    }
+  }
+
+
+
+}
+
 unittest {
 
   import std.stdio;

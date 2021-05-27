@@ -417,14 +417,8 @@ void writeSVG(Vec)(string filename, const Vec[] points, const ref TriDB triDB){
 	}
   }
 
-  foreach(i ; activePoints){
-	const auto p = scaledPoints[i];
-	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .01);
-	f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
-				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"red\" >%d</text></g>",
-				p.x, p.y, .025, i);
+  svgLabeledPoints(f, scaledPoints, activePoints);
 
-  }
   f.writeln("</g>\n</svg>");
 }
 
