@@ -1,0 +1,11 @@
+{
+  "name": "quadrunner",
+  "dependencies": {
+    "gl3n": "~>1.4.1",
+    "dtriangulate" : { "version" : "*"}
+  },
+  "description": "testing code for quadrangulation",
+  "license": "MIT",
+  "targetType" : "executable",
+  "sourcePaths" : ["."]
+}

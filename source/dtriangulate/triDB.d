@@ -291,11 +291,11 @@ struct TriDB{
 	return ret;
   }
 
-  int[] getActiveVertices() const{
-	int[] ret;
+  size_t[] getActiveVertices() const{
+	size_t[] ret;
 	foreach(size_t i, const ref svec; triangles){
 	  if(!svec.empty){
-		ret ~= to!int(i);
+		ret ~= i;
 	  }
 	}
 	return ret;

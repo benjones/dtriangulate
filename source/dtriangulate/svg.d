@@ -3,7 +3,7 @@ module dtriangulate.svg;
 import std.stdio : File;
 
 //write the header and return points scaled appropriately
-Vec[] prepareSVG(Vec)(ref File f, const Vec[] points, const int[] activePoints){
+Vec[] prepareSVG(Vec)(ref File f, const Vec[] points, const size_t[] activePoints){
   import std.array;
   import std.stdio : File;
   import std.algorithm;
@@ -14,7 +14,7 @@ Vec[] prepareSVG(Vec)(ref File f, const Vec[] points, const int[] activePoints){
 	return [];
   }
   //using a delecate to store a copy of the points, not a reference
-  Vec[] usedPoints = activePoints.map!(delegate Vec(int a){ return points[a]; }).array;
+  Vec[] usedPoints = activePoints.map!(delegate Vec(size_t a){ return points[a]; }).array;
 
 
   Vec minP = Vec(usedPoints.map!("a.x").minElement(), usedPoints.map!("a.y").minElement());
@@ -57,13 +57,13 @@ void svgLine(Vec)(ref File f, Vec a, Vec b, float lineWidth, bool dashed = false
 
 }
 
-void svgLabeledPoints(Vec)(ref File f, const Vec[] scaledPoints, const int[] activePoints){
+void svgLabeledPoints(Vec)(ref File f, const Vec[] scaledPoints, const size_t[] activePoints){
 
   foreach(i ; activePoints){
 	const auto p = scaledPoints[i];
-	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .01);
+	f.writefln( "<circle cx=\"%.8f\" cy=\"%.8f\" r=\"%.8f\" fill=\"black\" />", p.x, p.y, .1);
 	f.writefln( "<g transform=\"translate(%.8f, %.8f) scale(1, -1)\" >" ~
-				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"red\" >%d</text></g>",
-				p.x, p.y, .025, i);
+				"<text x=\"0\" y=\"0\" font-family=\"Verdana\" font-size=\"%.8f\" fill=\"blue\" >%d</text></g>",
+				p.x, p.y, .45, i);
   }
 }

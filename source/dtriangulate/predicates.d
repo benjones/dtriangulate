@@ -25,6 +25,8 @@ auto orient2DFMA2(Vec)(Vec a, Vec b, Vec c){
 
 size_t extendedO2dCount = 0;
 
+///returns: positive if c is left of segment a-b (triangle a, b, c has positive signed area)
+/// negative if c is right of a->b, and 0 if c is exactly on the line between a, b
 auto orient2D(Vec)( Vec a,  Vec b,  Vec c){
 
   alias FP = Unqual!(typeof(a.x));
@@ -37,9 +39,9 @@ auto orient2D(Vec)( Vec a,  Vec b,  Vec c){
   //if any of those are 0, the subtraction is exact
   FP axby = acx*bcy;
   FP aybx = acy*bcx;
-  
+
   FP detSum;
-  
+
   //if the parts have opposite signs, we're cool
   if(axby > 0){
 	if(aybx <= 0){ //the sign of axby can't be wrong, so 0 for aybx is fine
@@ -73,7 +75,7 @@ auto orient2D(Vec)( Vec a,  Vec b,  Vec c){
 
 auto orient2DAdaptive(Vec)( Vec a,  Vec b,  Vec c){
   ++extendedO2dCount;
-  
+
   alias FP = Unqual!(typeof(a.x));
   auto ax = AdaptiveFloat!FP(a.x);
   auto ay = AdaptiveFloat!FP(a.y);
@@ -106,7 +108,7 @@ auto inCircleFMA(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref V
   return fma(fma(adx, adx, ady*ady), fms(bdx, cdy, bdy*cdx),
              fma(fma(bdx, bdx, bdy*bdy), fms(ady, cdx, adx*cdy),
                  fma(cdx, cdx, cdy*cdy)*fms(adx, bdy, ady*bdx)));
-  
+
 }
 
 auto inCircleNaive(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec d){
@@ -121,7 +123,7 @@ auto inCircleNaive(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref
   return (adx*adx + ady*ady)*(bdx*cdy - bdy*cdx) +
     (bdx*bdx + bdy*bdy)*(ady*cdx - adx*cdy) +
     (cdx*cdx + cdy*cdy)*(adx*bdy - ady*bdx);
-  
+
 }
 
 
@@ -160,10 +162,10 @@ auto inCircle(Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto ref Vec 
 	cLift*(abs(axby) + abs(aybx));
 
   auto det = aCofactor + bCofactor + cCofactor;
-  
+
   enum FP errorBound =
 	10*FP.epsilon +	96*square(FP.epsilon);
-  
+
   if(abs(det) > errorBound*permanent){
 	return det; //I don't think we ever care if it's on the circle...
   } else {
@@ -203,9 +205,9 @@ auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto
   auto bycx = bdy*cdx;
 
   //(2 * 16 * (16)) = 512 components
-  //it's a 16*16, 
+  //it's a 16*16,
   auto aCofactor = aLift*(bxcy - bycx);
-  
+
   auto axcy = adx*cdy;
   auto aycx = ady*cdx;
   auto bCofactor = bLift*(aycx - axcy);
@@ -213,10 +215,10 @@ auto inCircleAdaptive( Vec)(auto ref Vec a, auto ref Vec b, auto ref Vec c, auto
   auto axby = adx*bdy;
   auto aybx = ady*bdx;
   auto cCofactor = cLift*(axby - aybx);
-	
+
   //too many components
   return (aCofactor + bCofactor + cCofactor).asReal();
-  
+
 }
 
 
@@ -255,7 +257,7 @@ unittest{
 
 	bool insideRad = dist.asReal() < 0;
 
-	
+
 	bool inPred = inCircle(pts[0], pts[1], pts[2], Vec(x, y)) > 0;
 	if(inPred){ predInsideFound = true; }
 	else { predOutsideFound = true; }
@@ -264,7 +266,7 @@ unittest{
 	  writefln("failure: (%16f, %16f), (%16f, %16f), (%16f, %16f), (%16f, %16f), dist: %d, pred: %d",
 			   pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y,x, y, insideRad, inPred);
 	}
-	
+
   }
   assert(failures < 10);
   assert(predInsideFound);
@@ -274,7 +276,7 @@ unittest{
 
 /*
   closest point(p0, p1, t);  Which of p0 and p1 is closer to t?
-  
+
   want to compute (p0 - t)^2 - p(1 -t)^2 and compare it to 0
 
   expanded out:
@@ -299,7 +301,7 @@ unittest{
   t0 = x0 +- eps |x0| //t0 is within eps*mag of the FP approximation
   t1 = x1 +-eps |x1| ...
 
-  t4 = p1x*to = p1x(x0 +- eps|x0|) 
+  t4 = p1x*to = p1x(x0 +- eps|x0|)
      = (p1x*x0) +- (p1x *eps |x0|)
      = (x4 +- eps|x4|) +- (eps* (|x4| +- eps |x4|) )
      = x4 +- eps |x4| (2 + eps)
@@ -311,7 +313,7 @@ unittest{
      = x8 +- eps  (  |x8| +(2+eps)(|x4| + |x5|)
   similarly for t9
 
-  t10 = t8 + t9 = x8 +- eps  (  |x8| +(2+eps)(|x4| + |x5|) + 
+  t10 = t8 + t9 = x8 +- eps  (  |x8| +(2+eps)(|x4| + |x5|) +
                   x9 +- eps  (  |x9| +(2+eps)(|x6| + |x7|)
 
       = x10 +- eps |x10| +- ...
@@ -341,15 +343,15 @@ int closer(Vec)(auto ref Vec p0, auto ref Vec p1, auto ref Vec t){
   //check the error bounds:
   FP minError = FP.epsilon*(abs(x10) + abs(x8) + abs(x9) +
 							(2 + FP.epsilon)*(abs(x4) + abs(x5) + abs(x6) + abs(x7)));
-  
+
   if(abs(x10) > minError){
 	//less than 0 if p0 is closer
-	return x10 < 0 ? 0 : 1; 
+	return x10 < 0 ? 0 : 1;
   } else {
 
 	return closerAdaptive(p0, p1, t);
   }
-  
+
 }
 
 int closerAdaptive(Vec)(auto ref Vec p0, auto ref Vec p1, auto ref Vec t){
@@ -362,7 +364,7 @@ int closerAdaptive(Vec)(auto ref Vec p0, auto ref Vec p1, auto ref Vec t){
   auto p0y = AdaptiveFloat!FP(p0.y);
   auto p1x = AdaptiveFloat!FP(p1.x);
   auto p1y = AdaptiveFloat!FP(p1.y);
-  
+
   auto x0 = p0x - tx2;
   auto x1 = p1x - tx2;
   auto x2 = p0y - ty2;
@@ -378,7 +380,7 @@ int closerAdaptive(Vec)(auto ref Vec p0, auto ref Vec p1, auto ref Vec t){
   auto x10 = x8 + x9;
 
   return x10.asReal() < 0 ? 0 : 1;
-  
+
 }
 
 unittest{
@@ -402,9 +404,9 @@ unittest{
   t = Vec(-1e10, -1e10);
   assert(closer(p0, p1, t) == 1);
   assert(closer(p1, p0, t) == 0);
-  
-  
-  
+
+
+
 }
 
 bool segmentsCross(Segment)(auto ref Segment a, auto ref Segment b){
@@ -412,7 +414,7 @@ bool segmentsCross(Segment)(auto ref Segment a, auto ref Segment b){
 	(orient2D(a.first, a.second, b.second) > 0);
   bool aCrossesB = (orient2D(b.first, b.second, a.first) > 0) !=
 	(orient2D(b.first, b.second, a.second) > 0);
-  
+
   //both must be true
   return bCrossesA && aCrossesB;
 
@@ -443,11 +445,11 @@ bool pointInDiametricCircle(Segment, Vec)( Segment s,  Vec p){
 
   enum FP tolFactor =
 	3*FP.epsilon + 3*FP.epsilon*FP.epsilon + FP.epsilon*FP.epsilon*FP.epsilon;
-  
-  import std.math : abs;	  
+
+  import std.math : abs;
   auto errorBound = FP.epsilon*(abs(x11) + abs(x10) + abs(x9)) +
 	tolFactor*(abs(x5) + abs(x6) + abs(x7) + abs(x8));
-  
+
   if(abs(x11) > errorBound){
 	return x11 > 0;
   } else {
@@ -464,7 +466,7 @@ bool pointInDiametricCircleAdaptive(Vec)(Vec a,  Vec midpoint,  Vec p){
   writeln("using adaptive diametric circle");
 
   alias FP = Unqual!(typeof(a.x));
-  
+
   auto ax = AdaptiveFloat!FP(a.x);
   auto ay = AdaptiveFloat!FP(a.y);
   auto mx = AdaptiveFloat!FP(midpoint.x);
@@ -483,16 +485,16 @@ bool pointInDiametricCircleAdaptive(Vec)(Vec a,  Vec midpoint,  Vec p){
   auto x9 = x5 + x6;
   auto x10 = x7 + x8;
   auto x11 = x9 - x10;
-  
+
   return x11.asReal() > 0;
-  
+
 }
 
 
 
 /*
   Error analysis for in front of
-  
+
   t = true value
 
   t0 = s2x - s1x
@@ -506,20 +508,20 @@ bool pointInDiametricCircleAdaptive(Vec)(Vec a,  Vec midpoint,  Vec p){
   x* = floatApprox(t*)
 
 
-  t[0-3] = x[0-3] +/- eps*abs(x[0-3]) 
-  
+  t[0-3] = x[0-3] +/- eps*abs(x[0-3])
+
   t4 = (x0 +/- eps *abs(x0) )*(x2 +/- eps*abs(x2))
      = x0*x2 + 2*eps*abs(x0*x2) + abs(x0*x2)*eps^2 //sub in x4 = x0*x2 + eps*abs(x4)
      = x4 + eps*abs(x4) + 2*eps*(abs(x4) + eps*abs(x4)) + (x4 + eps*abs(x4))*eps^2
      = x4 + eps*abs(x4) *( 3 + 3*eps + eps^2)
 
    similarly for t5
-   
+
    t6 = t4 + t5
-     = (x4 + abs(x4)*eps*(3 + 3*eps + eps^2) + (x5 + abs(x5)*eps*(3 + e*eps + eps^2) 
+     = (x4 + abs(x4)*eps*(3 + 3*eps + eps^2) + (x5 + abs(x5)*eps*(3 + e*eps + eps^2)
      = x4 + x5 + abs(x4 + x5)*eps(3 + 3*eps + eps^2)
      = (x6 + eps*abs(x6)) + abs(x6 + eps*abs(x6))*eps*(3 + 3*eps + eps^2)
-     = x6 + eps*abs(x6) + eps*abs(x6)(1 + eps ) *(3 + e*eps + eps^2) 
+     = x6 + eps*abs(x6) + eps*abs(x6)(1 + eps ) *(3 + e*eps + eps^2)
 	 = x6 + eps*abs(x6)*( 1 + (1 + eps)*(e + 3*eps + eps^2)
 
 	 //tolerance = eps*abs(x6)*(1 + (1 + eps)*(3 + 3*eps + eps^2))
@@ -531,7 +533,7 @@ bool pointInDiametricCircleAdaptive(Vec)(Vec a,  Vec midpoint,  Vec p){
 bool inFrontOf(Vec, Segment)(Segment s, Vec p){
 
   alias FP = Unqual!(typeof(p.x));
-  
+
   auto vx = s.second.x - s.first.x;
   auto vy = s.second.y - s.first.y;
 
@@ -550,19 +552,19 @@ bool inFrontOf(Vec, Segment)(Segment s, Vec p){
   } else {
 	return inFrontOfAdaptive(s, p);
   }
-  
+
 }
 
 bool inFrontOfAdaptive(Vec, Segment)(Segment s, Vec p){
   alias FP = Unqual!(typeof(p.x));
-  
+
   auto ssx = AdaptiveFloat!FP(s.second.x);
   auto ssy = AdaptiveFloat!FP(s.second.y);
   auto sfx = AdaptiveFloat!FP(s.first.x);
   auto sfy = AdaptiveFloat!FP(s.first.y);
   auto px = AdaptiveFloat!FP(p.x);
   auto py = AdaptiveFloat!FP(p.y);
-  
+
   auto vx = ssx - sfx;
   auto vy = ssy - ssy;
 
