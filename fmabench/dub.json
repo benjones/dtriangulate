@@ -1,7 +1,7 @@
 {
   "name": "fmabench",
   "dependencies": {
-    "dtriangulate" : { "version" : "*"}
+    "dtriangulate" : { "version" : "*", "path": ".." }
   },
   "description": "benchmarks for exact predicates using FMA",
   "license": "MIT",
