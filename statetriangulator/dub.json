@@ -3,7 +3,7 @@
   "dependencies": {
     "gl3n": "~>1.4.1",
     "shplib_d": "~master",
-    "dtriangulate" : { "version" : "*"}
+    "dtriangulate" : { "version" : "*", "path": ".." }
   },
   "description": "A delaunay triangulator for state shapefiles",
   "license": "MIT",

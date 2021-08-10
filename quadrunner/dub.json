@@ -2,7 +2,7 @@
   "name": "quadrunner",
   "dependencies": {
     "gl3n": "~>1.4.1",
-    "dtriangulate" : { "version" : "*"}
+    "dtriangulate" : { "version" : "*", "path": ".." }
   },
   "description": "testing code for quadrangulation",
   "license": "MIT",
