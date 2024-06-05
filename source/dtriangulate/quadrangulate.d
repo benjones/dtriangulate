@@ -19,6 +19,7 @@ struct EdgePair{ CCWEdge ccwEdge; CWEdge cwEdge;}
 void dumpSvg(Vec)(const Vec[] points, const ref EdgeComplex ec){
   import std.format;
   static int frameNumber = 0;
+  writeln("Dumping frame ", frameNumber);
   writeSVG(format!"quads_%s.svg"(frameNumber++), points, ec);
 }
 
@@ -73,7 +74,7 @@ EdgePair quadrangulateRecurse(Vec)(ref EdgeComplex ec, const Vec[] points, const
 ///rdi: CCW edge whose org is the leftmost point in the right hull
 CCWEdge zipHulls(Vec)(ref EdgeComplex ec, const Vec[] points, CWEdge ldi, CCWEdge rdi){
 
-  writeln("\nzipping, ldi: ", ldi, " rdi: ", rdi);
+  writeln("\nzipping, ldi: ", ldi, " rdi: ", rdi, "\n\n");
   //start by finding the lowest edge in the combined hull
   advanceToLowerHullEdge(ec, points, ldi, rdi);
 
@@ -89,39 +90,206 @@ CCWEdge zipHulls(Vec)(ref EdgeComplex ec, const Vec[] points, CWEdge ldi, CCWEdg
 
   //this is the TOP side of the edge.
   //following nextL will go up the being-zipped side of the right hull
-  auto bottomLToRIndex = ec.newEdgeBetween(ldiPrevIndex, rightIndex);
-  writeln("bottom edge index: ", bottomLToRIndex, " edge itself: ", ec.edgeToString(bottomLToRIndex));
-  auto lCand = ec[ldiPrevIndex].org;
-  auto rCand = ec[rightIndex].dest;
-  while(true){
-    writeln("lcand ", lCand, "rcand ", rCand);
+  auto bottomLToRIndex = ec.newEdgeBetween(ldiPrevIndex, rightIndex, false);
+  writeln("bottom edge index: ", bottomLToRIndex);
 
-    //check for if left edge (lToR.left -> lCand) or right edge (ltoR.right -> rcand)
-    //is part of a triangle.  If so, delete it
+  auto ilegdIndex = ec.prevL(bottomLToRIndex);
+  auto ireguIndex = ec[bottomLToRIndex].nextL;
+
+  writeln("dumping before entering zip loop");
+  dumpSvg(points, ec);
+  while(true){
+
     auto bottomEdge = ec[bottomLToRIndex];
     writeln("bottom edge: ", ec.edgeToString(bottomEdge));
-    auto innerLeftEdgeGoingDown = ec[ec.prevL(bottomLToRIndex)];
+
+    auto innerLeftEdgeGoingDown = ec[ilegdIndex];
     writeln("ilegd: ", ec.edgeToString(innerLeftEdgeGoingDown));
-    auto lPolygonSize = ec.polygonSize(points, ec[innerLeftEdgeGoingDown.sym]);
-    writeln("l pgon done");
-    auto innerRightEdgeGoingUp = ec[bottomEdge.nextL];
+
+    auto innerRightEdgeGoingUp = ec[ireguIndex];
     writeln("iregu ", ec.edgeToString(innerRightEdgeGoingUp));
-    auto rPolygonSize = ec.polygonSize(points, ec[innerRightEdgeGoingUp.sym]);
 
-    writeln("lsize: ", lPolygonSize, " rsize: ", rPolygonSize);
 
-    if(lPolygonSize == 3){
+
+
+    const leftEdgeOK = canNeighborQuad(ec, points, innerLeftEdgeGoingDown);
+    const rightEdgeOK = canNeighborQuad(ec, points, innerRightEdgeGoingUp);
+    writeln("left can border quad? ", leftEdgeOK);
+    writeln("right can border quad? ", rightEdgeOK);
+
+    if(leftEdgeOK && rightEdgeOK){
+      //if the quad is convex, let's use it
+      if(isQuadConvex(points, [innerLeftEdgeGoingDown.org,
+                                            innerLeftEdgeGoingDown.dest,
+                                            innerRightEdgeGoingUp.org,
+                               innerRightEdgeGoingUp.dest])){
+        writeln("rdi/ldi sides can be joined to make a convex quad, checked 4 corners");
+
+        const newIlegdIndex = ec.prevL(ilegdIndex);
+        const newIreguIndex = innerRightEdgeGoingUp.nextL;
+
+        //returned edge goes R to L
+        bottomLToRIndex = ec[ec.newEdgeBetween(ireguIndex, ilegdIndex, true)].sym;
+        ilegdIndex = newIlegdIndex;
+        ireguIndex = newIreguIndex;
+
+        dumpSvg(points, ec);
+        continue;
+      }
+
+      writeln("could not make a convex quad from the 2 side edges");
+
+    }
+
+    //check to see if this could be a triangle (meaning this is the "top" of the zip)
+    //try using iregu.dest as the top of the triangle
+    const rightTriOrientation = orient2D(points[innerLeftEdgeGoingDown.dest],
+                                         points[innerRightEdgeGoingUp.org],
+                                         points[innerRightEdgeGoingUp.dest]);
+    if(rightTriOrientation > 0){
+      writeln("using top of iregu would make a valid triangle, let's see if it would be on the hull");
+
+      //TODO: double check
+      //does this new edge make a convex hull segment with the edges around it?
+      const nextRightIndex = ec[innerRightEdgeGoingUp.nextL].dest;
+
+      const hullOrientation = orient2D(points[nextRightIndex],
+                                       points[innerRightEdgeGoingUp.dest],
+                                       points[innerLeftEdgeGoingDown.org]);
+
+
+      if(hullOrientation > 0){
+        writeln("OK to use this triangle to close with");
+
+        const newEdge = ec.newEdgeBetween(ireguIndex, bottomLToRIndex, true);
+        dumpSvg(points, ec);
+        return CCWEdge(ec[newEdge]);
+
+      }
 
     }
 
 
-    dumpSvg(points, ec);
+    const leftTriOrientation = orient2D(points[innerLeftEdgeGoingDown.org],
+                                        points[innerLeftEdgeGoingDown.dest],
+                                        points[innerRightEdgeGoingUp.org]);
+    if(leftTriOrientation > 0){
+      writeln("using top of ilegd would make a valid triangle, let's see if it would be on the hull (TODO)");
 
-    break;
+    }
+
+
+    writeln("stealing from left/right side");
+    //check left first
+
+    if(isInTriangle(ec, points,ec[innerLeftEdgeGoingDown.sym])){
+      writeln("left side is a triangle");
+      //let's see if we could make a convex quad using its vertices plus iregu.org
+      if(isQuadConvex(points, [innerLeftEdgeGoingDown.org,
+                           ec[ec[innerLeftEdgeGoingDown.sym].nextL].dest,
+                           innerLeftEdgeGoingDown.dest,
+                           innerRightEdgeGoingUp.org])){
+        writeln("can make a convex quad from the left triangle.  Yay!");
+
+        const triEdgeIndex = ec[innerLeftEdgeGoingDown.sym].nextL;
+        writeln("edge from triangle to use: ", ec[triEdgeIndex]);
+
+        ec.deleteEdge(ilegdIndex);
+        writeln("triangle edge deleted, new triangle coming up next");
+        writeln(ec);
+        dumpSvg(points, ec);
+        const newEdge = ec.newEdgeBetween(bottomLToRIndex, triEdgeIndex, true);
+        dumpSvg(points, ec);
+      }
+
+
+    }
+
+
+    const size_t[] toCheck = [15, 19, 23, 16];
+    writeln("convex check: ", isQuadConvex(points, toCheck));
+
+    assert(0);
+
+
+    //Can detect that some edges CAN't be in the quadrangulation
+    // (on the interior and can't find a point to make a convex quad using the neighboring edges
+
+
+    // Seems impossible to guarantee that any triangles must have at least one EDGE on the boundary
+    // What if we just require at least one vertex on the boundary?
+    // Need to mark that vertex so that we don't zip a triangle in during a future pass
+    // we'll need to make sure we delete anything outside of it and make it a quad
+
+
+
+
+    /*if(lPolygonSize == 3){
+      writeln("lcand part of a triangle, deleting it");
+      ec.deleteEdge(ilegdIndex);
+      writeln(ec);
+      dumpSvg(points, ec);
+    }
+    if(rPolygonSize == 3){
+      writeln("rcand part of a triangle, deleting it");
+      ec.deleteEdge(ireguIndex);
+      writeln(ec);
+      dumpSvg(points, ec);
+      }*/
+
 
   }
   return CCWEdge();
 }
+
+
+/// Is the edge either part of a quad, or
+/// or does it have at least one edge on the boundary?
+/// If so, then it's fine to make a new quad using this edge
+bool canNeighborQuad(T)(const ref EdgeComplex ec, const T[] points, HalfEdge edge){
+
+  const sym = ec[edge.sym];
+  //boundary edges can be part of quads, no problem
+  if(sym.isOutside){
+    writeln("sym is outside");
+    return true;
+  }
+  //OK, it must be part of a polygon.  If it's a quad, then we're good
+  const size = ec.polygonSize(points, sym);
+  if(size == 4){
+    return true;
+  }
+
+  //todo, check if sym is part of a triangle on the edge
+  assert(size == 3);
+
+  return ec.triangleOnBoundary(sym);
+}
+
+
+/// is this edge in a triangle?
+
+bool isInTriangle(T)(const ref EdgeComplex ec,T[] points, HalfEdge edge){
+  if(edge.isOutside){
+    return false;
+  }
+  return ec.polygonSize(points, edge) == 3;
+}
+
+
+bool isQuadConvex(T)(const ref T[] points, scope const size_t[] vertices){
+  writeln("is quad convex? ", vertices);
+  foreach( i; 0..4){
+    const o2d = orient2D(points[vertices[i]], points[vertices[(i + 1) %4]], points[vertices[(i +2) %4]]);
+    if(o2d <= 0){
+      writeln("this corner is bad: ", vertices[i], " ", vertices[(i + 1) %4], " ", vertices[(i + 2) %4],
+              " o2d: ", o2d);
+      return false;
+    }
+  }
+  return true;
+}
+
 
 
 auto hullAdvance(T)(const ref EdgeComplex ec, T edge)

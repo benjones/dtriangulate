@@ -22,7 +22,7 @@ struct HalfEdge {
 
   EdgeId sym; //index of the half edge going from dest to org
 
-  //TODO use different types for vertex indices and edge indices
+  bool isOutside; //TODO: could convert to int faceID
 }
 
 ///Opaque index wrapper to use type safety to make sure we don't use a vertex index
@@ -59,8 +59,9 @@ struct EdgeComplex{
     const e1Index = allocEdge();
     const e2Index = allocEdge();
 
-    HalfEdge e1 = {a, b, e2Index, e2Index};
-    HalfEdge e2 = {b, a, e1Index, e1Index};
+    //consider edges created this way to always be "outside"
+    HalfEdge e1 = {a, b, e2Index, e2Index, true};
+    HalfEdge e2 = {b, a, e1Index, e1Index, true};
 
     getEdge(e1Index) = e1;
     getEdge(e2Index) = e2;
@@ -72,8 +73,9 @@ struct EdgeComplex{
     const retSym = allocEdge();
 
     const eStart = this[e1Index];
-    HalfEdge newEdge = {eStart.dest, newVertexIndex, retSym, retSym};
-    HalfEdge newEdgeSym = {newVertexIndex, eStart.dest, eStart.nextL, ret};
+    //edges created this way are always "outside"
+    HalfEdge newEdge = {eStart.dest, newVertexIndex, retSym, retSym, true};
+    HalfEdge newEdgeSym = {newVertexIndex, eStart.dest, eStart.nextL, ret, true};
 
     getEdge(ret) = newEdge;
     getEdge(retSym) = newEdgeSym;
@@ -85,39 +87,87 @@ struct EdgeComplex{
   }
 
   ///Create a new edge going from e1.dest to e2.org
-  EdgeId newEdgeBetween(EdgeId e1Index, EdgeId e2Index){
+  /// Mark all the edges in this loop (e1 -> the new edge)
+  /// as inside
+  EdgeId newEdgeBetween(EdgeId e1Index, EdgeId e2Index, bool markEdgesAsInside){
     auto e1 = this[e1Index];
     auto e2 = this[e2Index];
 
-    const originalE2Prev = prevL(e2Index);
+    writeln("new edge between  e1: ", edgeToString(e1), " e2: ", edgeToString(e2), " MEAI? ", markEdgesAsInside);
 
-    writeln("new edge between  e1: ", edgeToString(e1), " e2: ", edgeToString(e2));
+
+    const originalE2Prev = prevL(e2Index);
     const newIndex1 = allocEdge();
     const newIndex2 = allocEdge();
 
-    HalfEdge newE1 = {e1.dest, e2.org, e2Index, newIndex2};
-    HalfEdge newE2 = {e2.org, e1.dest, e1.nextL, newIndex1};
+    HalfEdge newE1 = {e1.dest, e2.org, e2Index, newIndex2, true};
+    HalfEdge newE2 = {e2.org, e1.dest, e1.nextL, newIndex1, true};
 
     getEdge(newIndex1) = newE1;
     getEdge(newIndex2) = newE2;
     writeln("new edges: ", edgeToString(newE1), edgeToString(newE2));
 
-    //clean nLeft for affected edges
 
     getEdge(e1Index).nextL = newIndex1;
 
 
-    //MODIFYING THE WRONG EDGE HERE.  Need something like the previous
-    writeln("prevl: ", edgeToString(this[prevL(e2Index)].nextL));
+    writeln("prevl2: ", this[originalE2Prev]);
     getEdge(originalE2Prev).nextL = newIndex2;
     writeln("modified :", edgeToString(this[e1Index]), " and ", edgeToString(this[originalE2Prev]));
 
+    //note original.nextL does not need to be updated
+
+    if(markEdgesAsInside){
+      writeln("marking newly 'closed' edges as inside");
+      //writeln("before: %s", this.toString());
+      auto cursor = e1Index;
+      do {
+        //writeln("cursor: ", cursor);
+        assert(this[cursor].isOutside);
+        getEdge(cursor).isOutside = false;
+        cursor = this[cursor].nextL;
+      } while(cursor != e1Index);
+    }
     writeln("ec after neb: \n", this.toString);
     return newIndex1;
   }
 
 
   void deleteEdge(EdgeId ei){
+
+    writeln("deleting ", edgeToString(ei), "from: \n", this, "\n\n");
+    auto e = this[ei];
+
+    auto eSymId = e.sym;
+    auto eSym = this[eSymId];
+
+    //prevL(e).nextL -> eSym.nextL, and vice versa
+    auto ePrevId = prevL(ei);
+    auto eSymPrevId = prevL(e.sym);
+
+    auto eNext = e.nextL;
+    auto eSymNext = eSym.nextL;
+
+    if(!e.isOutside){
+      assert(eSym.isOutside);
+      writeln("deleting edge that's part of a polygon, marking edge loop as outside now");
+      //mark this polygon as outside now
+      for(auto cursorIndex = ei; !this[cursorIndex].isOutside; cursorIndex = this[cursorIndex].nextL){
+        getEdge(cursorIndex).isOutside = true;
+      }
+    } else if(!eSym.isOutside){
+      writeln("deleting edge that's part of a polygon, marking edge SYM loop as outside now");
+      for(auto cursorIndex = eSymId; !this[cursorIndex].isOutside; cursorIndex = this[cursorIndex].nextL){
+        getEdge(cursorIndex).isOutside = true;
+      }
+    }
+
+    writeln("updating edges ", ePrevId, " and ", eSymPrevId);
+    getEdge(ePrevId).nextL = eSymNext;
+    getEdge(eSymPrevId).nextL = eNext;
+
+    freeEdge(ei);
+    freeEdge(eSymId);
 
   }
 
@@ -126,7 +176,7 @@ struct EdgeComplex{
   EdgeId newTriangle(size_t a, size_t b, size_t c){
     auto e1 = newEdge(a, b);
     auto e2 = newDanglingEdge(e1, c);
-    newEdgeBetween(e2, e1);
+    newEdgeBetween(e2, e1, true);
     return e1;
   }
 
@@ -135,17 +185,21 @@ struct EdgeComplex{
     auto e1 = newEdge(a, b);
     auto e2 = newDanglingEdge(e1, c);
     auto e3 = newDanglingEdge(e2, d);
-    newEdgeBetween(e3, e1);
+    newEdgeBetween(e3, e1, true);
     return e1;
   }
 
   EdgeId prevL (EdgeId eIndex) const {
+    writeln("finding prevL for ", this[eIndex]);
     auto ret = this[eIndex].sym;
+    writeln("is it? ", this[ret]);
     size_t limit = 0;
-    while(this[ret].nextL != eIndex  && ++limit < 1000){
+    while(this[ret].nextL != eIndex  && ++limit < 100){
       ret = this[this[ret].nextL].sym; //rotate around the vertex
+      writeln("is it? ", this[ret]);
     }
-    assert(limit < 1000);
+    assert(limit < 100);
+    writeln("yes");
     return ret;
   }
 
@@ -178,7 +232,7 @@ struct EdgeComplex{
 
   string edgeToString(HalfEdge e){
     import std.format;
-    return format!"HalfEdge(org: %s, dest: %s, nextL: (%s, %s))"(e.org, e.dest, this[e.nextL].org, this[e.nextL].dest);
+    return format!"HalfEdge(org: %s, dest: %s, nextL: (%s, %s), out: %s)"(e.org, e.dest, this[e.nextL].org, this[e.nextL].dest, e.isOutside);
   }
 
   ///gives a list of all half edges in use.  It has to filter unused edges and make a copy, so this is slow-ish
@@ -212,11 +266,13 @@ struct EdgeComplex{
 
   ///return the length of the polygon this half edge is part of.
   ///This will assert that the the polygon is convex and nondegenerate (only 2-gons can be 0 volume)
-  size_t polygonSize(Vec)(const Vec[] points, HalfEdge he){
+  /// should only be called on internal polygons (not the outside boundary)
+  size_t polygonSize(Vec)(const Vec[] points, HalfEdge he) const{
     import dtriangulate.predicates;
     size_t ret = 1;
     const startIndex = getIndex(this, he);
     for(auto e = he; e.nextL != startIndex && ret < 1000; e = this[e.nextL]){
+      assert(!e.isOutside);
       ++ret;
       const nextVert = this[e.nextL].dest;
       if(nextVert == e.org){
@@ -232,6 +288,21 @@ struct EdgeComplex{
   }
 
 
+  /// he should be a triangle
+  /// true if one of the 2 other edges has a sym that's outside
+  bool triangleOnBoundary(HalfEdge he) const {
+    const next = this[he.nextL];
+    const nextNext = this[next.nextL];
+
+    assert(this[nextNext.nextL] == he);
+
+    return this[next.sym].isOutside || this[nextNext.sym].isOutside;
+
+  }
+
+
+
+
   private EdgeId allocEdge(){
     import std.range: empty, popBack, back;
     if(!freeEdgeList.empty){
@@ -244,6 +315,11 @@ struct EdgeComplex{
     return ret;
   }
 
+
+  private void freeEdge(EdgeId id){
+    edges[id.index] = HalfEdge.init;
+    freeEdgeList ~= id;
+  }
 
 }
 
@@ -291,7 +367,7 @@ unittest {
 
   auto e1 = ec.newEdge(10, 11);
   auto e2 = ec.newDanglingEdge(e1, 12);
-  auto e3 = ec.newEdgeBetween(e2, e1);
+  auto e3 = ec.newEdgeBetween(e2, e1, true);
 
   ec.newTriangle(13, 14, 15);
 
